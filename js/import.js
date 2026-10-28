@@ -289,7 +289,7 @@
       Object.keys(seen).forEach(function (t) { if (seen[t].parts) g.notes.push(t + ' appears ' + seen[t].parts.length + ' times. Weights were added together (' + seen[t].parts.map(function (x) { return x.toFixed(3) + '%'; }).join(' + ') + ' = ' + seen[t].w.toFixed(3) + '%).'); });
       g.fin = fin; g.cash = cash; g.base = base; g.seen = seen; g.pastedCash = pastedCash;
       if (cash < -EPS && !g.problem) g.problem = 'Over 100% by ' + (-cash).toFixed(3) + '%' + (g.replace ? '' : ', not enough cash. Lower other weights or use Replace');
-      if (pastedCash != null && Math.abs(pastedCash - cash) > EPS) g.notes.push('USD Cash set to ' + cash.toFixed(3) + '% so the model totals 100% (you pasted ' + pastedCash.toFixed(3) + '%)');
+      if (pastedCash != null && Math.abs(pastedCash - cash) > 0.01) g.notes.push('USD Cash set to ' + cash.toFixed(3) + '% so the model totals 100% (you pasted ' + pastedCash.toFixed(3) + '%)');
       // preview rows
       var rows = [];
       rows.push({ kind: 'cash', t: CASH, cur: base.w[CASH] || 0, nw: cash });
@@ -379,7 +379,9 @@
   }
   function renderData(res) {
     var src = ST.source, rowsN = (ST.header ? ST.grid.length - 1 : ST.grid.length), cols = ST.grid[0].length;
-    var h = '<div class="imp-src"><span>' + esc(src.label) + ' &middot; ' + rowsN + ' row' + (rowsN === 1 ? '' : 's') + ' &times; ' + cols + ' column' + (cols === 1 ? '' : 's') + (ST.header ? ' &middot; header row detected' : '') + '</span>' +
+    var sheetSel = src.kind === 'file' && ST.file && ST.file.name === src.label && ST.file.sheets.length > 1
+      ? ' &middot; Sheet <select class="imp-sheet" data-imp-sheet>' + ST.file.sheets.map(function (sh, i) { return '<option value="' + i + '"' + (sh.name === src.sheet ? ' selected' : '') + '>' + esc(sh.name) + '</option>'; }).join('') + '</select>' : '';
+    var h = '<div class="imp-src"><span>' + esc(src.label) + sheetSel + ' &middot; ' + rowsN + ' row' + (rowsN === 1 ? '' : 's') + ' &times; ' + cols + ' column' + (cols === 1 ? '' : 's') + (ST.header ? ' &middot; header row detected' : '') + '</span>' +
       '<span class="imp-src-a">' + (src.kind !== 'file' ? '<button data-imp="edit">Edit text</button>' : '') + '<button data-imp="reset">Clear &amp; start over</button></span></div>';
     if (ST.editing) h += '<textarea id="imp-text" class="imp-text inline" spellcheck="false">' + esc(ST.text) + '</textarea>';
     // column mapping
@@ -495,11 +497,23 @@
     render();
   }
   function ingestText(text, label) { ingestGrid(parseText(text), { kind: label === 'Typed' ? 'typed' : 'paste', label: label || 'Pasted from clipboard' }, text); }
+  function usableRoles(roles) {
+    var has = function (r) { return roles.indexOf(r) > -1; };
+    return (has('id') || has('id2')) && (has('weight') || has('shares') || has('mv')) && (!ST.bulk || has('access'));
+  }
   function ingestFile(f) {
     if (!f) return;
     var done = function (rows) { ingestGrid(rows, { kind: 'file', label: f.name }); };
     var fail = function (err) { C.toast('Could not read ' + f.name + ': ' + (err && err.message ? err.message : 'unsupported file')); };
-    if (/\.(xlsx|xlsm)$/i.test(f.name)) f.arrayBuffer().then(window.MDPXlsx.read).then(done).catch(fail);
+    if (/\.(xlsx|xlsm)$/i.test(f.name)) f.arrayBuffer().then(window.MDPXlsx.readAll).then(function (sheets) {
+      sheets = sheets.filter(function (sh) { return trimGrid(sh.rows).length; });
+      if (!sheets.length) { C.toast(f.name + ' has no data'); return; }
+      // pick the sheet you were looking at if it is importable, otherwise the first importable one
+      var usable = function (sh) { var g = trimGrid(sh.rows), d = detect(g, ST.bulk); return usableRoles(d.roles); };
+      var pick = sheets.filter(function (sh) { return sh.active && usable(sh); })[0] || sheets.filter(usable)[0] || sheets.filter(function (sh) { return sh.active; })[0] || sheets[0];
+      ST.file = { name: f.name, sheets: sheets };
+      ingestGrid(pick.rows, { kind: 'file', label: f.name, sheet: pick.name });
+    }).catch(fail);
     else if (/\.(csv|tsv|txt)$/i.test(f.name)) f.text().then(function (t) { done(parseText(t)); }).catch(fail);
     else C.toast('Use an .xlsx or .csv file');
   }
@@ -654,6 +668,7 @@
   });
   root.addEventListener('change', function (e) {
     if (!ST) return;
+    if (e.target.hasAttribute('data-imp-sheet')) { var sh = ST.file.sheets[+e.target.value]; ingestGrid(sh.rows, { kind: 'file', label: ST.file.name, sheet: sh.name }); return; }
     var j = e.target.getAttribute('data-imp-role');
     if (j != null) {
       var role = e.target.value;

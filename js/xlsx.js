@@ -123,7 +123,7 @@
       var method = dv.getUint16(p + 10, true), csz = dv.getUint32(p + 20, true), nl = dv.getUint16(p + 28, true), xl = dv.getUint16(p + 30, true), cl = dv.getUint16(p + 32, true), lo = dv.getUint32(p + 42, true);
       var name = dec.decode(u8.subarray(p + 46, p + 46 + nl));
       var start = lo + 30 + dv.getUint16(lo + 26, true) + dv.getUint16(lo + 28, true), data = u8.subarray(start, start + csz);
-      if (/^xl\/(sharedStrings|workbook)\.xml$|^xl\/worksheets\/sheet\d+\.xml$|^xl\/_rels\/workbook\.xml\.rels$/.test(name)) jobs[name] = method === 8 ? inflate(data) : Promise.resolve(data);
+      if (/^xl\/(sharedStrings|workbook|styles)\.xml$|^xl\/worksheets\/sheet\d+\.xml$|^xl\/_rels\/workbook\.xml\.rels$/.test(name)) jobs[name] = method === 8 ? inflate(data) : Promise.resolve(data);
       p += 46 + nl + xl + cl;
     }
     var names = Object.keys(jobs);
@@ -132,7 +132,8 @@
     });
   }
   function colIndex(ref) { var m = /^([A-Z]+)/.exec(ref), n = 0; for (var i = 0; i < m[1].length; i++) n = n * 26 + m[1].charCodeAt(i) - 64; return n - 1; }
-  function read(buf) {
+  /* Reads every sheet. Percent-formatted cells come back as "4.500%" strings, so 4.5% is never mistaken for 0.045. */
+  function readAll(buf) {
     return unzip(buf).then(function (files) {
       var parse = function (s) { return new DOMParser().parseFromString(s, 'application/xml'); };
       var shared = [];
@@ -141,34 +142,52 @@
           shared.push(Array.prototype.map.call(si.getElementsByTagName('t'), function (t) { return t.textContent; }).join(''));
         });
       }
-      // first sheet in workbook order
-      var sheetPath = 'xl/worksheets/sheet1.xml';
+      // which cell styles are percentages
+      var pctStyle = [];
+      if (files['xl/styles.xml']) {
+        var st = parse(files['xl/styles.xml']), pctFmt = { 9: 1, 10: 1 };
+        Array.prototype.forEach.call(st.getElementsByTagName('numFmt'), function (f) { if (/%/.test(f.getAttribute('formatCode') || '')) pctFmt[f.getAttribute('numFmtId')] = 1; });
+        var xfs = st.getElementsByTagName('cellXfs')[0];
+        if (xfs) Array.prototype.forEach.call(xfs.getElementsByTagName('xf'), function (xf, i) { pctStyle[i] = !!pctFmt[xf.getAttribute('numFmtId')]; });
+      }
+      var sheets = [], active = 0;
       if (files['xl/workbook.xml'] && files['xl/_rels/workbook.xml.rels']) {
-        var first = parse(files['xl/workbook.xml']).getElementsByTagName('sheet')[0];
-        var rid = first && (first.getAttribute('r:id') || first.getAttributeNS(RNS, 'id'));
+        var wb = parse(files['xl/workbook.xml']), rels = {};
+        var view = wb.getElementsByTagName('workbookView')[0];
+        active = view && view.getAttribute('activeTab') ? +view.getAttribute('activeTab') : 0;
         Array.prototype.forEach.call(parse(files['xl/_rels/workbook.xml.rels']).getElementsByTagName('Relationship'), function (r) {
-          if (r.getAttribute('Id') === rid) sheetPath = 'xl/' + r.getAttribute('Target').replace(/^\/?xl\//, '').replace(/^\//, '');
+          rels[r.getAttribute('Id')] = 'xl/' + r.getAttribute('Target').replace(/^\/?xl\//, '').replace(/^\//, '');
+        });
+        Array.prototype.forEach.call(wb.getElementsByTagName('sheet'), function (sh) {
+          var rid = sh.getAttribute('r:id') || sh.getAttributeNS(RNS, 'id');
+          if (files[rels[rid]]) sheets.push({ name: sh.getAttribute('name'), path: rels[rid] });
         });
       }
-      var xml = files[sheetPath] || files[Object.keys(files).filter(function (k) { return /worksheets\/sheet/.test(k); })[0]];
-      if (!xml) throw new Error('No worksheet found in file');
-      var rows = [];
-      Array.prototype.forEach.call(parse(xml).getElementsByTagName('row'), function (row) {
-        var out = [];
-        Array.prototype.forEach.call(row.getElementsByTagName('c'), function (c) {
-          var t = c.getAttribute('t'), v = c.getElementsByTagName('v')[0], val = '';
-          if (t === 's') val = shared[+v.textContent] || '';
-          else if (t === 'inlineStr') val = Array.prototype.map.call(c.getElementsByTagName('t'), function (n) { return n.textContent; }).join('');
-          else if (t === 'b') val = v && v.textContent === '1' ? 'TRUE' : 'FALSE';
-          else if (v) val = t === 'str' || t === 'e' ? v.textContent : +v.textContent;
-          out[colIndex(c.getAttribute('r') || 'A')] = val;
+      if (!sheets.length) Object.keys(files).filter(function (k) { return /worksheets\/sheet\d+\.xml$/.test(k); }).sort().forEach(function (k, i) { sheets.push({ name: 'Sheet' + (i + 1), path: k }); });
+      if (!sheets.length) throw new Error('No worksheet found in file');
+      return sheets.map(function (sh, idx) {
+        var rows = [];
+        Array.prototype.forEach.call(parse(files[sh.path]).getElementsByTagName('row'), function (row) {
+          var out = [];
+          Array.prototype.forEach.call(row.getElementsByTagName('c'), function (c) {
+            var t = c.getAttribute('t'), v = c.getElementsByTagName('v')[0], val = '';
+            if (t === 's') val = shared[+v.textContent] || '';
+            else if (t === 'inlineStr') val = Array.prototype.map.call(c.getElementsByTagName('t'), function (n) { return n.textContent; }).join('');
+            else if (t === 'b') val = v && v.textContent === '1' ? 'TRUE' : 'FALSE';
+            else if (v) {
+              if (t === 'str' || t === 'e') val = v.textContent;
+              else { val = +v.textContent; if (pctStyle[+(c.getAttribute('s') || 0)]) val = (Math.round(val * 1e7) / 1e5) + '%'; }
+            }
+            out[colIndex(c.getAttribute('r') || 'A')] = val;
+          });
+          for (var i = 0; i < out.length; i++) if (out[i] === undefined) out[i] = '';
+          rows.push(out);
         });
-        for (var i = 0; i < out.length; i++) if (out[i] === undefined) out[i] = '';
-        rows.push(out);
+        return { name: sh.name, rows: rows, active: idx === active };
       });
-      return rows;
     });
   }
+  function read(buf) { return readAll(buf).then(function (all) { return (all.filter(function (s) { return s.active; })[0] || all[0]).rows; }); }
 
-  window.MDPXlsx = { write: write, read: read };
+  window.MDPXlsx = { write: write, read: read, readAll: readAll };
 })();
