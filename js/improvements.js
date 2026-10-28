@@ -97,6 +97,23 @@
       change: 'Tooltip states plainly: "Last end-of-day price as of MM/DD/YYYY close".',
       why: 'Removes ambiguity about price timing.', added: D, status: P },
 
+    { id: 'MD-08', area: 'Model Details', title: 'Adjust weights by an amount (+0.5 / -1)',
+      today: 'Users calculate the new weight by hand (e.g. 3.370 + 0.5).',
+      change: 'Type +0.5 or -1 in New Weight to adjust from the current value. A live tip shows the math (3.370 + 0.500 = 3.870%). Press Enter to apply. Cash rebalances automatically.',
+      why: 'Matches how PMs think about changes ("add half a point"). Removes mental math and typos.', added: '2026-10-28', status: P, try: '#/model/N529/info/details' },
+    { id: 'MD-09', area: 'Model Details', title: '"Changed Only" view',
+      today: 'All rows are always shown. Users scan the whole model to find their edits.',
+      change: 'A Changed Only toggle (with live count) hides untouched rows and lists deleted securities. USD Cash stays visible. Turn it off any time.',
+      why: 'A fast review of exactly what will be submitted, even in large models.', added: '2026-10-28', status: P, try: '#/model/N529/info/details' },
+    { id: 'MD-10', area: 'Model Details', title: 'Status reason on the model page',
+      today: 'Rejected / Needs Attention status gives no reason. Users open the audit trail to find out why.',
+      change: 'A one-line notice above the tabs shows the reason, who and when. For corporate actions it names the security, highlights its row and offers "Show <ticker>". It stays visible while you fix the model.',
+      why: 'Users know what to fix the moment they open the model.', added: '2026-10-28', status: P, try: '#/model/N612/info/details' },
+    { id: 'ML-01', area: 'Model List', title: 'Hover a status to see why',
+      today: 'The status shows only a label.',
+      change: 'Hovering Rejected / Needs Attention / In Progress / New on the Model List shows the reason (e.g. "Rejected 10/27 3:20 AM by QASIT: weight total does not add up to 100%"; "Being edited by VM HomeOffice since 9:38 AM").',
+      why: 'Triage the list without opening each model.', added: '2026-10-28', status: P, try: '#/' },
+
     // ---------- Excel ----------
     { id: 'XL-01', area: 'Excel', title: 'Cleaner import template',
       today: 'Plain template. Users must figure out the valid values.',

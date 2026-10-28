@@ -126,7 +126,9 @@
     list: { pending: emptyFilters(), applied: emptyFilters(), search: '', sort: { key: null, dir: 1 }, perPage: 100, page: 1, collapsed: false },
     ui: { open: null, q: {} },
     detailSort: {},
-    snapDate: {}
+    snapDate: {},
+    onlyChanged: null,
+    focusRow: null
   };
   var byAccess = {};
   S.models.forEach(function (m) { byAccess[m.access] = m; });
@@ -161,6 +163,18 @@
      data-tip-anchor pins a clean bubble above the element (info icons, disabled buttons). */
   var tip = $('#tip'), tipFor = null;
   function hideTip() { tip.style.display = 'none'; tip.className = 'tip'; tipFor = null; }
+  function placeTip(t) {
+    tip.className = 'tip anchored';
+    var r = t.getBoundingClientRect(), w = tip.offsetWidth, h = tip.offsetHeight;
+    var left = Math.max(8, Math.min(window.innerWidth - w - 8, r.left + r.width / 2 - w / 2));
+    var top = r.top - h - 9, below = top < 4;
+    if (below) top = r.bottom + 9;
+    tip.classList.toggle('below', below);
+    tip.style.left = left + 'px'; tip.style.top = top + 'px';
+    tip.style.setProperty('--arrow-x', (r.left + r.width / 2 - left) + 'px');
+  }
+  /* Pin a tip to an element (used while typing, independent of hover). */
+  function pinTip(el, text) { tipFor = el; tip.textContent = text; tip.style.display = 'block'; placeTip(el); }
   document.addEventListener('mouseover', function (e) {
     var t = e.target.closest ? e.target.closest('[data-tip]') : null;
     if (t === tipFor) return;
@@ -171,16 +185,8 @@
     tipFor = t;
     tip.textContent = text;
     tip.style.display = 'block';
-    if (t.hasAttribute('data-tip-anchor')) {
-      tip.className = 'tip anchored';
-      var r = t.getBoundingClientRect(), w = tip.offsetWidth, h = tip.offsetHeight;
-      var left = Math.max(8, Math.min(window.innerWidth - w - 8, r.left + r.width / 2 - w / 2));
-      var top = r.top - h - 9, below = top < 4;
-      if (below) top = r.bottom + 9;
-      tip.classList.toggle('below', below);
-      tip.style.left = left + 'px'; tip.style.top = top + 'px';
-      tip.style.setProperty('--arrow-x', (r.left + r.width / 2 - left) + 'px');
-    } else {
+    if (t.hasAttribute('data-tip-anchor')) placeTip(t);
+    else {
       tip.className = 'tip';
       tip.style.left = (e.clientX + 14) + 'px'; tip.style.top = (e.clientY + 16) + 'px';
     }
@@ -453,7 +459,7 @@
       '<td>' + fmt.listMod(m.modified) + '</td>' +
       '<td>' + (m.confirmedUser ? esc(m.confirmedUser) : '-') + '</td>' +
       '<td>' + (m.confirmed ? fmt.conf(m.confirmed) : '-') + '</td>' +
-      '<td>' + statusHtml(m.status) + '</td>' +
+      '<td>' + (function () { var t = reasonTip(m); return t ? '<span class="st-why" data-tip="' + esc(t) + '" data-tip-anchor>' + statusHtml(m.status) + '</span>' : statusHtml(m.status); })() + '</td>' +
       '<td><button class="audit-btn" data-act="audit" data-acc="' + esc(m.access) + '" aria-label="Audit trail">' + I.audit + '</button></td>' +
     '</tr>';
   }
@@ -486,6 +492,47 @@
     var p = parseInt($('#ml-goto').value, 10);
     if (!p || p < 1 || p > pages) { toast('Please enter a page between 1 and ' + pages); return; }
     L.page = p; renderListGrid();
+  }
+
+  /* ---- why is a model in this status? (derived from the audit trail) ---- */
+  function effStatus(m) { return m.draft && m.draft.live && m.draft.prev ? m.draft.prev.status : m.status; }
+  function reasonFor(m) {
+    var st = effStatus(m), ev, e;
+    if (st === 'Rejected') {
+      ev = eventsDesc(m); e = ev.filter(function (x) { return x.event === 'Model Rejected'; })[0];
+      return { kind: 'rej', title: 'Rejected', text: e ? e.details.replace(/^Rejected for the following reason\(s\):\s*/i, '').trim() : 'No reason recorded.', ts: e && e.ts, user: e && e.user };
+    }
+    if (st === 'Needs Attention') {
+      ev = eventsDesc(m); e = ev.filter(function (x) { return x.event === 'Mandatory Corp Action'; })[0];
+      var tk = e && (e.ticker || (/Corporate action on (\S+)/.exec(e.note || '') || [])[1]);
+      return { kind: 'attn', title: 'Needs Attention', text: e ? (e.note || e.details) : 'Review this model and resubmit.', ts: e && e.ts, user: e && e.user, ticker: tk };
+    }
+    if (m.status === 'In Progress') {
+      var lb = lockedBy(m);
+      return lb ? { kind: 'lock', title: 'In Progress', text: 'Being edited by ' + displayName(lb) + ' since ' + fmt.conf(m.modified) + '.' }
+        : { kind: 'mine', title: 'In Progress', text: 'You have unsubmitted edits on this model.' };
+    }
+    if (st === 'New') return { kind: 'new', title: 'New', text: 'New model. Add securities and Submit to activate it.' };
+    return null;
+  }
+  function reasonTip(m) {
+    var r = reasonFor(m);
+    if (!r) return '';
+    return (r.ts && (r.kind === 'rej' || r.kind === 'attn') ? r.title + ' ' + fmt.conf(r.ts) + (r.user ? ' by ' + r.user : '') + ': ' : '') + r.text;
+  }
+  function whyHtml(m) {
+    var r = reasonFor(m);
+    if (!r || r.kind === 'lock' || r.kind === 'mine') return '';
+    var A = ' data-acc="' + esc(m.access) + '"', acts = '';
+    if (r.kind === 'attn' && r.ticker && m.holdings.concat(m.draft ? m.draft.rows.map(function (x) { return { ticker: x.ticker }; }) : []).some(function (h) { return h.ticker === r.ticker; }))
+      acts += '<button data-act="why-focus" data-t="' + esc(r.ticker) + '"' + A + '>Show ' + esc(r.ticker) + '</button>';
+    if (r.kind !== 'new') acts += '<button data-act="audit"' + A + '>View Audit Trail</button>';
+    var editing = m.draft && m.draft.live;
+    var tail = r.kind === 'rej' ? (editing ? 'Submitting your edits will clear this status.' : 'Correct the model and Submit to clear this status.') :
+      r.kind === 'attn' ? (editing ? 'Submitting your edits will clear this status.' : '') : '';
+    return '<div class="why why-' + r.kind + '" role="status">' + (r.kind === 'rej' ? I.err : r.kind === 'attn' ? I.attn : I.newI) +
+      '<div class="why-t"><b>' + esc(r.title) + '</b>' + (r.ts ? '<span class="why-m">' + fmt.conf(r.ts) + (r.user ? ' &middot; ' + esc(r.user) : '') + '</span>' : '') +
+      '<span class="why-x">' + esc(r.text) + (tail ? ' <em>' + tail + '</em>' : '') + '</span></div>' + (acts ? '<div class="why-a">' + acts + '</div>' : '') + '</div>';
   }
 
   /* ---- audit trail ---- */
@@ -556,6 +603,7 @@
           '<div class="meta" id="d-meta">' + metaHtml(m) + '</div>' +
         '</section>' +
         '<section class="card d-body">' +
+          '<div id="d-why">' + whyHtml(m) + '</div>' +
           '<div class="tabs small">' + SUBS[tab].map(function (s) { return '<a href="' + base + tab + '/' + s[0] + '" class="' + (s[0] === sub ? 'on' : '') + '">' + s[1] + '</a>'; }).join('') + '</div>' +
           '<div id="d-content"></div>' +
         '</section>' +
@@ -593,6 +641,7 @@
       d.prev = { status: m.status, modified: m.modified, modifiedUser: m.modifiedUser };
       m.status = 'In Progress'; m.modified = nowStamp(); m.modifiedUser = persona.user;
       var meta = $('#d-meta'); if (meta) meta.innerHTML = metaHtml(m);
+      var wy = $('#d-why'); if (wy) wy.innerHTML = whyHtml(m);
     }
     save();
   }
@@ -606,7 +655,7 @@
   /* ---------- Model Details ---------- */
   var MD_COLS = [
     { key: 'ticker', label: 'Ticker', w: 92 }, { key: 'desc', label: 'Description', w: 196 }, { key: 'id', label: 'CUSIP', w: 98 },
-    { key: 'price', label: 'Price ($)', w: 100, r: 1 }, { key: 'weight', label: 'Weight', w: 84, r: 1 }, { key: 'nw', label: 'New Weight', w: 132, r: 1 },
+    { key: 'price', label: 'Price ($)', w: 100, r: 1 }, { key: 'weight', label: 'Weight', w: 84, r: 1 }, { key: 'nw', label: 'New Weight', w: 132, r: 1, info: 'Type a weight, or +0.5 / -1 to adjust the current value. USD Cash rebalances automatically.' },
     { key: 'chg', label: 'Weight Change', w: 112, r: 1 }, { key: null, label: 'Trade Type', w: 200 }, { key: null, label: 'Do Not Buy', w: 84 },
     { key: null, label: 'Do Not Sell', w: 84 }, { key: null, label: 'Notes', w: 262 }, { key: null, label: '', w: 84 }
   ];
@@ -621,6 +670,7 @@
       '<div class="md-bar">' +
         '<div class="add-wrap"><span class="lbl">Add Ticker/CUSIP/CINS/SEDOL (For UCITS must use CINS)</span><div class="add-row"><input id="md-add" placeholder="Eg. AAPL,AMZN,MSFT" autocomplete="off"><button class="btn" data-act="md-add">Add</button></div></div>' +
         '<div class="md-actions"><span class="mt">Model Type: ' + esc(m.type) + '</span>' +
+          '<button data-act="md-only" id="md-only" class="md-toggle' + (S.onlyChanged === m.access ? ' on' : '') + '" aria-pressed="' + (S.onlyChanged === m.access) + '"><span class="tg-box"></span>Changed Only <b id="md-only-n">0</b></button>' +
           '<button data-act="md-trade-all">' + I.refresh + 'Trade All To Target</button>' +
           '<button data-act="md-import">' + I.excel + 'Import</button>' +
           '<button data-act="md-template">' + I.excel + 'Download Template</button></div>' +
@@ -630,6 +680,7 @@
       '<div class="md-buttons"><button class="btn btn-text" data-act="md-clear" data-acc="' + esc(m.access) + '">Clear</button><button class="btn btn-tan" id="md-submit" data-act="md-submit" data-acc="' + esc(m.access) + '">Submit</button><button class="btn btn-black" id="md-confirm" data-act="md-confirm" data-acc="' + esc(m.access) + '">Confirm</button></div>';
     renderMdTable(m);
     bindMdTable(m);
+    if (S.focusRow) { var fr = S.focusRow; S.focusRow = null; setTimeout(function () { focusRow(fr); }, 0); }
     $('#md-add').addEventListener('keydown', function (e) { if (e.key === 'Enter') addSecurities(m); });
   }
   function mdSorted(m, d) {
@@ -659,11 +710,14 @@
     return '<span>0.000%</span>';
   }
   var EOD_TIP = 'Last end-of-day price as of ' + fmt.day(EOD) + ' close';
+  var mdCtx = { ca: null, caText: '' };
+  function rowChanged(r) { return Math.abs((+r.nw || 0) - r.weight) > EPS || r.added || r.tt !== '-' || r.dnb || r.dns || !!r.notes; }
   function mdRowHtml(r) {
     var sec = secFor(r.ticker) || { desc: '', id: '', price: 0 };
     var isCash = r.ticker === CASH, t = esc(r.ticker);
-    return '<tr class="' + (r.added ? 'added' : '') + '" data-row="' + t + '">' +
-      '<td>' + t + '</td>' +
+    var ca = mdCtx.ca === r.ticker;
+    return '<tr class="' + (r.added ? 'added ' : '') + (rowChanged(r) ? 'chg ' : '') + (isCash ? 'always ' : '') + (ca ? 'ca-row' : '') + '" data-row="' + t + '">' +
+      '<td>' + t + (ca ? '<span class="ca-ic" data-tip="' + esc(mdCtx.caText) + '" data-tip-anchor>' + I.attn + '</span>' : '') + '</td>' +
       '<td data-tip="' + esc(sec.desc) + '" data-tip-trunc>' + esc(sec.desc) + '</td>' +
       '<td>' + esc(sec.id) + '</td>' +
       '<td class="r">$' + num(sec.price, 2) + (sec.info ? '<span class="ii pi" data-tip="' + EOD_TIP + '" data-tip-anchor>' + I.info + '</span>' : '<span class="pi-sp"></span>') + '</td>' +
@@ -678,12 +732,18 @@
     '</tr>';
   }
   function renderMdTable(m) {
-    var d = getDraft(m), o = mdSorted(m, d);
+    var d = getDraft(m), o = mdSorted(m, d), why = reasonFor(m);
+    mdCtx.ca = why && why.kind === 'attn' ? why.ticker : null; mdCtx.caText = why ? why.text : '';
     var head = '<thead><tr>' + MD_COLS.map(function (c) {
       var s = c.key && o.sort.key === c.key ? '<span class="sort">' + (o.sort.dir > 0 ? '&#9650;' : '&#9660;') + '</span>' : '';
-      return '<th class="' + (c.r ? 'r' : '') + '"' + (c.key ? ' data-act="md-sort" data-key="' + c.key + '" data-acc="' + esc(m.access) + '"' : ' style="cursor:default"') + '>' + c.label + s + '</th>';
+      return '<th class="' + (c.r ? 'r' : '') + '"' + (c.key ? ' data-act="md-sort" data-key="' + c.key + '" data-acc="' + esc(m.access) + '"' : ' style="cursor:default"') + '>' + c.label + (c.info ? '<span class="ii" data-tip="' + esc(c.info) + '" data-tip-anchor>' + I.info + '</span>' : '') + s + '</th>';
     }).join('') + '</tr></thead>';
-    $('#md-table').innerHTML = MD_COLGROUP + head + '<tbody>' + o.rows.map(mdRowHtml).join('') + '</tbody>';
+    var gone = diff(m, d).changes.filter(function (c) { return c.ticker !== CASH && !rowOf(d, c.ticker); });
+    var extra = (gone.length ? '<tr class="md-deleted always"><td colspan="12">Deleted: ' + gone.map(function (c) { return '<b>' + esc(c.ticker) + '</b> (' + c.from.toFixed(3) + '% &rarr; USD Cash)'; }).join(', ') + '</td></tr>' : '') +
+      '<tr class="md-empty always"><td colspan="12">No changes yet. <button data-act="md-only">Show all rows</button></td></tr>';
+    var tblEl = $('#md-table');
+    tblEl.classList.toggle('only-chg', S.onlyChanged === m.access);
+    tblEl.innerHTML = MD_COLGROUP + head + '<tbody>' + o.rows.map(mdRowHtml).join('') + extra + '</tbody>';
     $('#md-foot').innerHTML = '<table class="grid md-grid">' + MD_COLGROUP + '<tr><td colspan="5"></td><td class="r"><span id="md-total"></span></td><td colspan="6"></td></tr></table>';
     var sc = $('.md-scroll'); $('#md-foot').scrollLeft = sc.scrollLeft;
     updateTotals(m);
@@ -701,7 +761,7 @@
       if (document.activeElement !== inp) inp.value = cash.nw.toFixed(3);
       inp.classList.toggle('bad', badWeight(cash.nw));
       inp.classList.remove('flash'); void inp.offsetWidth; inp.classList.add('flash');
-      inp.closest('tr').querySelector('[data-chg]').innerHTML = chgHtml(cash);
+      var ctr = inp.closest('tr'); ctr.querySelector('[data-chg]').innerHTML = chgHtml(cash); ctr.classList.toggle('chg', rowChanged(cash));
     }
   }
   /* Recompute total + button states. O(rows); runs on every keystroke. */
@@ -716,6 +776,9 @@
       !df.dirty ? 'No changes to submit' : '';
     var confWhy = confirmedHere === m.access ? 'Model already confirmed at ' + fmt.conf(m.confirmed) + '.' :
       df.dirty ? 'Confirm is available only when the model has no changes. Submit or clear your changes first.' : '';
+    var nChg = d.rows.filter(function (r) { return r !== cashRow && rowChanged(r); }).length + df.changes.filter(function (c) { return c.ticker !== CASH && !rowOf(d, c.ticker); }).length;
+    var nEl = $('#md-only-n'); if (nEl) nEl.textContent = nChg;
+    var tEl = $('#md-table'); if (tEl) tEl.setAttribute('data-n', nChg);
     setBtn($('#md-submit'), subWhy);
     setBtn($('#md-confirm'), confWhy);
   }
@@ -733,30 +796,53 @@
     tbl.addEventListener('input', function (e) {
       var el = e.target, d = getDraft(m), t;
       if (el.classList.contains('nw')) {
-        var row = rowOf(d, el.getAttribute('data-t'));
-        row.nw = el.value.trim() === '' ? '' : (isNaN(+el.value) ? el.value : +el.value);
+        var row = rowOf(d, el.getAttribute('data-t')), v = el.value.trim(), rel = /^[+-]\s*(\d+\.?\d*|\.\d+)?\s*%?$/.test(v);
+        if (rel) {
+          // relative entry: "+0.5" / "-1" adjusts the value the cell had when focused
+          var base = +el.getAttribute('data-base') || 0, delta = parseFloat(v.replace(/[\s%]/g, '')) || 0;
+          row.nw = round3(base + delta);
+          el.classList.add('rel');
+          pinTip(el, base.toFixed(3) + (delta < 0 ? ' \u2212 ' : ' + ') + Math.abs(delta).toFixed(3) + ' = ' + row.nw.toFixed(3) + '%' + (row.nw < 0 ? '  (below 0)' : '  \u00b7  Enter to apply'));
+        } else {
+          if (el.classList.contains('rel')) { el.classList.remove('rel'); hideTip(); }
+          row.nw = v === '' ? '' : (isNaN(+v) ? v : +v);
+        }
         el.classList.toggle('bad', badWeight(row.nw));
-        el.closest('tr').querySelector('[data-chg]').innerHTML = chgHtml(row);
+        var tr = el.closest('tr');
+        tr.querySelector('[data-chg]').innerHTML = chgHtml(row);
+        tr.classList.toggle('chg', rowChanged(row));
         if (row.ticker !== CASH) syncCash(m, true);
         touch(m); updateTotals(m);
-      } else if ((t = el.getAttribute('data-notes'))) { rowOf(d, t).notes = el.value; touch(m); updateTotals(m); }
+      } else if ((t = el.getAttribute('data-notes'))) { var nr = rowOf(d, t); nr.notes = el.value; el.closest('tr').classList.toggle('chg', rowChanged(nr)); touch(m); updateTotals(m); }
     });
     tbl.addEventListener('change', function (e) {
       var el = e.target, d = getDraft(m), t;
       if ((t = el.getAttribute('data-tt'))) rowOf(d, t).tt = el.value;
       else if ((t = el.getAttribute('data-dnb'))) rowOf(d, t).dnb = el.checked;
       else if ((t = el.getAttribute('data-dns'))) rowOf(d, t).dns = el.checked;
-      else if (el.classList.contains('nw')) { if (!badWeight(el.value)) el.value = (+el.value).toFixed(3); return; }
+      else if (el.classList.contains('nw')) {
+        var cr = rowOf(d, el.getAttribute('data-t'));
+        if (el.classList.contains('rel')) { el.classList.remove('rel'); hideTip(); el.value = (+cr.nw).toFixed(3); }
+        else if (!badWeight(el.value)) el.value = (+el.value).toFixed(3);
+        el.setAttribute('data-base', +cr.nw || 0);
+        return;
+      }
       else return;
+      el.closest('tr').classList.toggle('chg', rowChanged(rowOf(d, t)));
       touch(m); updateTotals(m);
     });
     tbl.addEventListener('keydown', function (e) {
       // Enter / arrow keys move between New Weight cells, like a spreadsheet
       if (!e.target.classList.contains('nw') || ['Enter', 'ArrowDown', 'ArrowUp'].indexOf(e.key) < 0) return;
-      var all = $$('input.nw', tbl), i = all.indexOf(e.target), j = e.key === 'ArrowUp' ? i - 1 : i + 1;
+      var all = $$('input.nw', tbl).filter(function (x) { return x.offsetParent !== null; }), i = all.indexOf(e.target), j = e.key === 'ArrowUp' ? i - 1 : i + 1;
       if (all[j]) { e.preventDefault(); all[j].focus(); all[j].select(); }
     });
-    tbl.addEventListener('focusin', function (e) { if (e.target.classList.contains('nw')) e.target.select(); });
+    tbl.addEventListener('focusin', function (e) {
+      if (!e.target.classList.contains('nw')) return;
+      var r0 = rowOf(getDraft(m), e.target.getAttribute('data-t'));
+      e.target.setAttribute('data-base', r0 && !isNaN(+r0.nw) ? +r0.nw : 0);
+      e.target.select();
+    });
   }
 
   function resolveSecurity(token) {
@@ -1028,6 +1114,15 @@
     $('#users-q').addEventListener('input', function (e) { draw(e.target.value); });
   }
 
+  function focusRow(t) {
+    if (S.onlyChanged) { S.onlyChanged = null; var b = $('#md-only'); if (b) b.classList.remove('on'); $('#md-table').classList.remove('only-chg'); }
+    var tr = $('#md-table tr[data-row="' + (window.CSS && CSS.escape ? CSS.escape(t) : t) + '"]');
+    if (!tr) return;
+    tr.scrollIntoView({ block: 'center' });
+    tr.classList.remove('imp-hl'); void tr.offsetWidth; tr.classList.add('imp-hl');
+    var inp = tr.querySelector('input.nw'); if (inp) inp.focus({ preventScroll: true });
+  }
+
   /* =====================================================================
    * IMPROVEMENTS LOG — net new vs production (data in js/improvements.js)
    * ===================================================================== */
@@ -1153,6 +1248,19 @@
       }
       case 'md-add': addSecurities(m); break;
       case 'md-delete': deleteRow(m, el.getAttribute('data-t')); break;
+      case 'md-only': {
+        var cm = currentModel(); if (!cm) break;
+        S.onlyChanged = S.onlyChanged === cm.access ? null : cm.access;
+        var on = S.onlyChanged === cm.access, b = $('#md-only');
+        if (b) { b.classList.toggle('on', on); b.setAttribute('aria-pressed', on); }
+        $('#md-table').classList.toggle('only-chg', on);
+        break;
+      }
+      case 'why-focus': {
+        var ft = el.getAttribute('data-t');
+        if (!$('#md-table')) { S.focusRow = ft; location.hash = '#/model/' + encodeURIComponent(acc) + '/info/details'; break; }
+        focusRow(ft); break;
+      }
       case 'md-trade-all': {
         var dd = getDraft(m);
         dd.rows.forEach(function (r) { if (r.ticker !== CASH) { r.tt = SEED.tradeToTarget; r.notes = 'Fully Rebalance'; } });
@@ -1222,6 +1330,7 @@
     var h = hq[0].replace(/^#\/?/, '').split('/');
     if (h[0] === 'improvements') { current.access = null; confirmedHere = null; renderImprovements(); document.title = 'Model Delivery Portal - Improvements'; return; }
     if (h[0] !== 'model' || decodeURIComponent(h[1] || '') !== confirmedHere) confirmedHere = null;
+    if (h[0] !== 'model' || decodeURIComponent(h[1] || '') !== S.onlyChanged) S.onlyChanged = null;
     if (h[0] === 'model' && h[1]) {
       current.access = decodeURIComponent(h[1]);
       renderDetail(current.access, h[2] || 'info', h[3] || '');

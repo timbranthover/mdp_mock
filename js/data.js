@@ -359,7 +359,7 @@
       push({ ts: m.modified, event: 'Model Rejected', user: m.modifiedUser, details: 'Rejected for the following reason(s):\nModel Weight total does not add up to 100%.' });
     } else if (m.status === 'Needs Attention') {
       var h = m.holdings[1 + Math.floor(rand() * (m.holdings.length - 1))];
-      push({ ts: m.modified, event: 'Mandatory Corp Action', user: 'System', details: 'Mandatory Corporate Action event occurred. Status set to Needs Attention. Details below.', note: 'Corporate action on ' + h.ticker + ' (' + SECURITIES[h.ticker].desc + '): mandatory reorganization effective ' + m.modified.slice(5, 7) + '/' + m.modified.slice(8, 10) + '/2026. Review the position and resubmit the model.' });
+      push({ ts: m.modified, event: 'Mandatory Corp Action', user: 'System', ticker: h.ticker, details: 'Mandatory Corporate Action event occurred. Status set to Needs Attention. Details below.', note: 'Corporate action on ' + h.ticker + ' (' + SECURITIES[h.ticker].desc + '): mandatory reorganization effective ' + m.modified.slice(5, 7) + '/' + m.modified.slice(8, 10) + '/2026. Review the position and resubmit the model.' });
     } else if (m.status === 'New') {
       push({ ts: m.modified, event: 'Model Created', user: m.modifiedUser, details: 'New model created. Awaiting initial submission.' });
     }
