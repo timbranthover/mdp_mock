@@ -38,8 +38,8 @@ Everything net new vs. production is listed in the app at **Improvements** (butt
 
 A right-side drawer replaces "pick a file". Open it with **Import** (Model Details), **Bulk Import** (Model List), by pressing **Ctrl+V anywhere** on either page, or by dragging a file onto the page.
 
-- **Paste from Excel, type, drop or browse.** Headers are optional. Columns are detected (Security/CUSIP, Weight, Shares, Market Value, TradeType, DoNotBuy, DoNotSell, Notes, Access) and can be remapped.
-- **Recognition:** ticker, CUSIP, CINS, SEDOL, or company name ("Apple"). Ticker typos get suggestions ("APPL" → AAPL). Weights as `10%`, `10` or `0.10`. Shares/market value are converted at EOD prices. Duplicates are combined and explained.
+- **Paste from Excel, type, drop or browse.** Headers are optional. Columns are detected (Security/CUSIP, Weight, TradeType, DoNotBuy, DoNotSell, Notes, Access) and can be remapped.
+- **Recognition:** ticker, CUSIP, CINS, SEDOL, or company name ("Apple"). Ticker typos get suggestions ("APPL" → AAPL). Weights as `10%`, `10` or `0.10`. Duplicates are combined and explained.
 - **Same rules as the grid:** restricted, not eligible, UCITS-needs-CINS and invalid securities are flagged in the row, with one-click fixes or *Skip*. USD Cash balances to 100% automatically and cannot go below 0.
 - **Modes:** *Replace model* or *Update listed only*, suggested automatically from how much of the model you pasted.
 - **Single model:** *Apply to Model* fills the grid (changed rows highlighted). Review, then Submit. **Undo** for 10 seconds.

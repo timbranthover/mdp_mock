@@ -23,7 +23,7 @@
   function accessIndex() { var o = {}; C.models().forEach(function (m) { o[m.access.toUpperCase()] = m; }); return o; }
 
   var ROLES = [
-    ['id', 'Security / CUSIP'], ['id2', 'Security / CUSIP (backup)'], ['weight', 'Weight'], ['shares', 'Shares'], ['mv', 'Market Value'],
+    ['id', 'Security / CUSIP'], ['id2', 'Security / CUSIP (backup)'], ['weight', 'Weight'],
     ['tt', 'TradeType'], ['dnb', 'DoNotBuy'], ['dns', 'DoNotSell'], ['notes', 'Notes'], ['access', 'Access (model)'], ['ignore', 'Ignore']
   ];
   var ROLE_LABEL = {}; ROLES.forEach(function (r) { ROLE_LABEL[r[0]] = r[1]; });
@@ -32,8 +32,8 @@
     [/^(security|ticker|symbol|identifier|securityid|sedol)/, 'id'],
     [/^(cusip|cins|isin)/, 'id'],
     [/^(newweight|targetweight|target|weight|wt|allocation|alloc|%|pct|percent)/, 'weight'],
-    [/^(shares|quantity|qty|units|position)/, 'shares'],
-    [/^(marketvalue|mv|value|amount|mktval)/, 'mv'],
+    // SMA models are target weights traded across many accounts: share / dollar columns are never used
+    [/^(shares|quantity|qty|units|position|marketvalue|mv|value|amount|mktval)/, 'ignore'],
     [/^(tradetype|trade|action)/, 'tt'],
     [/^(donotbuy|dnb)/, 'dnb'],
     [/^(donotsell|dns)/, 'dns'],
@@ -176,7 +176,7 @@
     ids.forEach(function (i, n) { roles[i] = n === 0 ? 'id' : n === 1 ? 'id2' : 'ignore'; });
     // weight: header wins; otherwise the numeric column whose total looks like 100% (or 1.0)
     var nums = roles.reduce(function (a, r, i) { if (r === 'num') a.push(i); return a; }, []);
-    if (roles.indexOf('weight') < 0 && roles.indexOf('shares') < 0 && roles.indexOf('mv') < 0 && nums.length) {
+    if (roles.indexOf('weight') < 0 && nums.length) {
       var best = nums[0], bestScore = 1e9;
       nums.forEach(function (j) {
         var s = data.reduce(function (a, r) { var c = cleanNum(r[j]); return a + (isNaN(c.n) ? 0 : c.n); }, 0);
@@ -187,7 +187,7 @@
       roles[best] = 'weight';
     }
     roles = roles.map(function (r) { return r === 'num' ? 'ignore' : r; });
-    ['weight', 'access', 'tt', 'dnb', 'dns', 'notes', 'shares', 'mv'].forEach(function (role) {
+    ['weight', 'access', 'tt', 'dnb', 'dns', 'notes'].forEach(function (role) {
       var seen = false; roles = roles.map(function (r) { if (r !== role) return r; if (seen) return 'ignore'; seen = true; return r; });
     });
     return { header: header, roles: roles };
@@ -210,12 +210,12 @@
   }
   function compute() {
     var R = ST.roles, col = function (role) { return R.indexOf(role); };
-    var cId = col('id'), cId2 = col('id2'), cW = col('weight'), cSh = col('shares'), cMv = col('mv'), cA = col('access');
+    var cId = col('id'), cId2 = col('id2'), cW = col('weight'), cA = col('access');
     var cTT = col('tt'), cB = col('dnb'), cS = col('dns'), cN = col('notes');
     var data = ST.header ? ST.grid.slice(1) : ST.grid, acc = accessIndex();
     var out = { groups: [], missing: [], rows: data.length };
     if (cId < 0 && cId2 < 0) out.missing.push('Security / CUSIP');
-    if (cW < 0 && cSh < 0 && cMv < 0) out.missing.push('Weight');
+    if (cW < 0) out.missing.push('Weight');
     if (ST.bulk && cA < 0) out.missing.push('Access (model)');
     if (out.missing.length) return out;
     var groups = {}, order = [];
@@ -240,10 +240,10 @@
       if (locked) g.problem = 'Being edited by ' + C.displayName(locked);
       var base = baseOf(m), seen = {}, pastedCash = null;
       // pass 1: resolve + raw values
-      var useVal = cW < 0 ? (cMv > -1 ? 'mv' : 'shares') : null, vals = [];
+      var vals = [];
       groups[key].forEach(function (x) {
         var token = ST.fix[x.i] != null ? ST.fix[x.i] : (String(x.r[cId] || '').trim() || String(cId2 > -1 ? x.r[cId2] || '' : '').trim());
-        var res = resolve(m, token), raw = cleanNum(cW > -1 ? x.r[cW] : useVal === 'mv' ? x.r[cMv] : x.r[cSh]);
+        var res = resolve(m, token), raw = cleanNum(x.r[cW]);
         var row = { i: x.i, token: token, res: res, raw: raw, t: res.t, err: res.err || null, sugg: res.sugg, how: res.how };
         if (!row.err && !raw.blank && (isNaN(raw.n) || raw.n < 0)) row.err = 'Weight must be a number of 0 or more';
         if (cTT > -1 && String(x.r[cTT]).trim()) { var tt = String(x.r[cTT]).trim(); row.tt = TRADE.filter(function (o) { return o.toLowerCase() === tt.toLowerCase(); })[0] || null; if (!row.tt && !row.err) row.warn = 'Unknown TradeType "' + tt + '" ignored'; }
@@ -254,12 +254,7 @@
       });
       // weight normalization
       var ok = vals.filter(function (v) { return !v.err; });
-      if (useVal) {
-        var tot = 0;
-        ok.forEach(function (v) { var p = v.t === CASH ? 1 : (SEC[v.t] ? SEC[v.t].price : 0); v.val = (isNaN(v.raw.n) ? 0 : v.raw.n) * (useVal === 'shares' ? p : 1); tot += v.val; });
-        ok.forEach(function (v) { v.w = tot ? r3(v.val / tot * 100) : 0; });
-        g.notes.push('Weights calculated from ' + (useVal === 'mv' ? 'market value' : 'shares × EOD price'));
-      } else {
+      {
         var anyPct = ok.some(function (v) { return v.raw.pct; }), s = 0, maxv = 0;
         ok.forEach(function (v) { var n = isNaN(v.raw.n) ? 0 : v.raw.n; s += n; maxv = Math.max(maxv, n); });
         var frac = !anyPct && maxv <= 1.0000001 && s > 0.5 && s <= 1.0001;
@@ -376,7 +371,7 @@
         (ST.bulk ? '<span class="need req">Access <em>required</em></span>' : '') +
         '<span class="need req">Security or CUSIP <em>required</em></span><span class="need req">Weight <em>required</em></span>' +
         '<span class="need">TradeType</span><span class="need">DoNotBuy</span><span class="need">DoNotSell</span><span class="need">Notes</span></div>' +
-        '<p>Headers are optional. Tickers, CUSIPs, CINS, SEDOLs and company names are recognized. Weights can be <b>10%</b>, <b>10</b> or <b>0.10</b>. Shares or market value also work; they are converted to weights at EOD prices.</p></div>' +
+        '<p>Headers are optional. Tickers, CUSIPs, CINS, SEDOLs and company names are recognized. Weights can be <b>10%</b>, <b>10</b> or <b>0.10</b>.</p></div>' +
       '<div class="imp-tip"><div><b>No files needed.</b> ' + (ST.bulk ? 'Copy every model, edit in Excel, then paste the sheet back here to update them all at once.' : 'Copy this model, edit it in Excel, then paste it back here.') + '</div>' +
         '<button class="btn imp-copy" data-imp="copy">' + I2.copy + (ST.bulk ? 'Copy All Models' : 'Copy Current Model') + '</button></div>' +
       (m ? '' : '<div class="imp-hint">Updating a single model? Open it and paste there.</div>');
@@ -397,7 +392,7 @@
           '<span class="imp-col-s" title="' + esc(samp) + '">' + esc(samp || '—') + '</span>' +
           '<select data-imp-role="' + j + '">' + ROLES.filter(function (r) { return ST.bulk || r[0] !== 'access'; }).map(function (r) { return '<option value="' + r[0] + '"' + (r[0] === role ? ' selected' : '') + '>' + r[1] + '</option>'; }).join('') + '</select></label>';
       }).join('') + '</div>';
-    var need = [['Security / CUSIP', ST.roles.indexOf('id') > -1 || ST.roles.indexOf('id2') > -1], ['Weight', ST.roles.indexOf('weight') > -1 || ST.roles.indexOf('shares') > -1 || ST.roles.indexOf('mv') > -1]];
+    var need = [['Security / CUSIP', ST.roles.indexOf('id') > -1 || ST.roles.indexOf('id2') > -1], ['Weight', ST.roles.indexOf('weight') > -1]];
     if (ST.bulk) need.unshift(['Access', ST.roles.indexOf('access') > -1]);
     h += '<div class="imp-needrow">' + need.map(function (n) { return '<span class="nd ' + (n[1] ? 'ok' : 'no') + '">' + (n[1] ? I2.check : I2.x) + esc(n[0]) + '</span>'; }).join('') + '</div></div>';
     if (res.missing.length) {
@@ -505,7 +500,7 @@
   function ingestText(text, label) { ingestGrid(parseText(text), { kind: label === 'Typed' ? 'typed' : 'paste', label: label || 'Pasted from clipboard' }, text); }
   function usableRoles(roles) {
     var has = function (r) { return roles.indexOf(r) > -1; };
-    return (has('id') || has('id2')) && (has('weight') || has('shares') || has('mv')) && (!ST.bulk || has('access'));
+    return (has('id') || has('id2')) && has('weight') && (!ST.bulk || has('access'));
   }
   function ingestFile(f) {
     if (!f) return;

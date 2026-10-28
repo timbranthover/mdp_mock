@@ -2,6 +2,10 @@
 
 This repo is a desktop-only digital twin of the UBS Model Delivery Portal (Money Manager view), used to mock up features with the MDP product team. All data is mock.
 
+## Domain context
+- These are **SMA investment models**: one model = a set of target **weights** (%) that is traded across many client accounts. Everything is expressed in weights. Never add share counts, quantities, market values or dollar amounts to model editing or import. They don't apply to a model.
+- USD Cash is the residual that keeps a model at 100%.
+
 ## Always keep the Improvements log current
 `js/improvements.js` lists everything that is **net new vs. the production app** (shown in-app at `#/improvements`, exportable to Excel).
 
