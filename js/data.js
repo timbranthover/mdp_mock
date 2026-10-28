@@ -70,6 +70,11 @@
       ['SHOP', 'SHOPIFY INC CL A', 162.40, '82509L107', 1],
       ['TT', 'TRANE TECHNOLOGIES PLC', 448.90, 'G8994E103', 0]
     ],
+    restricted: [
+      ['TSLA', 'TESLA INC', 412.30, '88160R101', 0],
+      ['LULU', 'LULULEMON ATHLETICA INC', 182.75, '550021109', 0],
+      ['PBIX', 'PATRIOT BALANCED INCOME FD CL I', 10.42, null, 0]
+    ],
     value: [
       ['JPM', 'JPMORGAN CHASE & CO', 335.19, '46625H100', 0],
       ['JNJ', 'JOHNSON & JOHNSON', 191.20, '478160104', 0],
@@ -183,6 +188,11 @@
   });
   function tickers(group) { return RAW[group].map(function (r) { return r[0]; }); }
 
+  /* Securities that fail validation when added (mirrors the real error events) */
+  SECURITIES.TSLA.error = 'Security is restricted. Restriction category: Restriction3,Restriction6,Restriction2. Not added to model.';
+  SECURITIES.LULU.error = 'Security is restricted. Restriction category: FutureDate. Not added to model.';
+  SECURITIES.PBIX.error = 'Security not valid for the ACCESS program.';
+
   /* ---------- holdings builder ---------- */
   function pick(rand, arr, n) {
     var a = arr.slice(), out = [];
@@ -232,7 +242,7 @@
   /* ---------- users ---------- */
   var MDP_USERS = {
     admin: 'MDC, ART', qa: 'QASIT, ICSTOMMQA', ho: 'HomeOffice, VM', ist: 'ISTOOLSET, QAHOTEN',
-    test: 'Test, ICSTOMMC', uat: 'UATTest, MDP', vm: 'One, Vestmark', dr: 'Reyes, Dana'
+    test: 'Test, ICSTOMMC', uat: 'UATTest, MDP', vm: 'One, Vestmark', dr: 'Reyes, Dana', sys: 'System'
   };
 
   /* ---------- strategies (all mock) ----------
@@ -270,12 +280,14 @@
     [M.cg, 'Capital Group Global Equity Focus', 'N533', 'Z9NS', 'Static', 211, 64.40, 'capgroup', 'Approved', '2026-10-14 08:12:09.551023', 'ho', '2026-10-01 11:05:00', 'qa'],
     [M.cg, 'Capital Group Multi-Sector Income', 'N530', 'Z9NT', 'Static', 87, 29.18, 'capgroup', 'In Progress', '2026-10-27 17:22:40.019876', 'admin', null, null],
     [M.pl, 'Polen Focus Growth Equity', 'N611', '', 'Static', 1204, 312.55, 'polen', 'Approved', '2026-10-21 14:02:11.903301', 'qa', '2026-10-21 14:30:00', 'qa'],
-    [M.pl, 'Polen Global Growth', 'N612', '', 'Static', 344, 96.02, 'polen', 'Approved', '2026-10-15 09:44:52.118450', 'ist', null, null],
+    [M.pl, 'Polen Global Growth', 'N612', '', 'Static', 344, 96.02, 'polen', 'Needs Attention', '2026-10-21 11:04:56.393805', 'sys', '2026-10-03 10:12:00', 'qa'],
     [M.pl, 'Polen Small Company Growth', 'N613', '', 'Static', 61, 12.84, 'polen', 'Rejected', '2026-10-24 11:27:05.664912', 'admin', null, null],
     [M.vg, 'Vanguard Core ETF Allocation - Cons', 'N621', '', 'Static', 418, 141.27, 'vanguard', 'Approved', '2026-10-20 10:10:10.120004', 'ho', '2026-10-06 15:12:00', 'uat'],
     [M.vg, 'Vanguard Core ETF Allocation - Mod', 'N622', '', 'Dynamic', 977, 288.90, 'vanguard', 'Approved', '2026-10-26 14:31:02.774519', 'qa', '2026-10-13 09:58:00', 'qa'],
     [M.vg, 'Vanguard Core ETF Allocation - Agg', 'N623', '', 'Static', 503, 166.48, 'vanguard', 'In Progress', '2026-10-28 08:51:22.904437', 'ho', null, null],
-    [M.vg, 'Vanguard Tax-Managed Balanced', 'N624', '', 'Static', 236, 74.15, 'vanguard', 'Approved', '2026-10-09 13:07:45.338190', 'qa', '2026-09-30 16:20:00', 'test']
+    [M.vg, 'Vanguard Tax-Managed Balanced', 'N624', '', 'Static', 0, 0.00, 'vanguard', 'New', '2026-10-26 13:07:45.338190', 'admin', null, null],
+    [M.bk, 'BlackRock Core Equity & Bond - Agg', 'N520', '', 'Static', 0, 0.00, 'bkcore', 'New', '2026-10-27 09:14:22.506113', 'ho', null, null],
+    [M.af, 'American Funds Growth & Income Portfolio', 'N540', '', 'Dynamic', 742, 205.36, 'afunds', 'Needs Attention', '2026-10-24 06:02:18.770431', 'sys', '2026-09-29 14:15:00', 'qa']
   ];
 
   /* ---------- profile users (fictional) ---------- */
@@ -300,6 +312,60 @@
   }
   function dayOf(stamp) { return stamp.slice(0, 10); }
 
+  /* ---------- audit trail ---------- */
+  var REASONS = ['qa', 'testing', 'quarterly rebalance', 'drift correction', 'manager instruction', 'cash target update'];
+  var ERRORS = [
+    function (r) { var t = ['POIUYQ', 'G495548999', 'XXYZQ', '54K3F9Z'][Math.floor(r() * 4)]; return 'Ticker/CUSIP = ' + t + '\nERROR: Invalid security. Not added to model.'; },
+    function () { return 'Ticker/CUSIP = CRDAX\nERROR: Mutual fund not eligible for program. Not added to model.'; },
+    function () { return 'Ticker/CUSIP = LULU\nERROR: ' + SECURITIES.LULU.error; },
+    function () { return 'Ticker/CUSIP = TSLA\nERROR: ' + SECURITIES.TSLA.error; },
+    function (r, m) { return 'Ticker/CUSIP = ' + m.holdings[1 + Math.floor(r() * (m.holdings.length - 1))].ticker + '\nERROR: Duplicate security. Not added to model'; }
+  ];
+  var testUsers = ['QASIT, ICSTOMMQA', 'Test, ICSTOMMC', 'HomeOffice, VM'];
+  function micros(seed) { return String(mulberry32(seed)()).slice(2, 8).padEnd(6, '0'); }
+  function stamp(day, rand) {
+    var h = 1 + Math.floor(rand() * 16);
+    return day + ' ' + String(h + 5).padStart(2, '0') + ':' + String(Math.floor(rand() * 60)).padStart(2, '0') + ':' + String(Math.floor(rand() * 60)).padStart(2, '0') + '.' + micros(Math.floor(rand() * 1e9));
+  }
+  function changesFor(m, rand) {
+    var rows = m.holdings.slice(1), n = 1 + Math.floor(rand() * 3), out = [];
+    pick(rand, rows, n).forEach(function (h) {
+      var delta = +((rand() - 0.5) * 1.2).toFixed(3) || 0.25;
+      out.push({ ticker: h.ticker, from: Math.max(0, +(h.weight - delta).toFixed(3)), to: h.weight });
+    });
+    var net = out.reduce(function (a, c) { return a + (c.to - c.from); }, 0);
+    out.push({ ticker: 'USD Cash', from: +(m.holdings[0].weight + net).toFixed(3), to: m.holdings[0].weight });
+    return out;
+  }
+  function buildEvents(m) {
+    var rand = mulberry32(hashStr('evt' + m.access)), ev = [], seq = 0;
+    function push(e) { e.seq = seq++; ev.push(e); }
+    var lastDay = m.modified.slice(0, 10);
+    if (m.status !== 'New') {
+      if (m.confirmed) push({ ts: m.confirmed, event: 'Confirmed', user: m.confirmedUser, details: 'Model Confirmed' });
+      ['2026-10-06', '2026-10-09', '2026-10-16', '2026-10-20', '2026-10-22'].forEach(function (day) {
+        if (day >= lastDay || rand() < 0.45) return;
+        var ts = stamp(day, rand), u = testUsers[Math.floor(rand() * 3)], ch = changesFor(m, rand);
+        push({ ts: ts, event: 'Model Updated By Admin', user: u, details: 'Admin reason for update: ' + REASONS[Math.floor(rand() * REASONS.length)], changes: ch });
+        push({ ts: ts, event: 'Model Approved', user: u, details: '-', changes: ch });
+        if (rand() < 0.4) push({ ts: stamp(day, rand), event: 'Error When Adding Security', user: testUsers[Math.floor(rand() * 2)], details: ERRORS[Math.floor(rand() * ERRORS.length)](rand, m) });
+      });
+    }
+    var ch = changesFor(m, rand);
+    if (m.status === 'Approved') {
+      push({ ts: m.modified, event: 'Model Updated By Admin', user: m.modifiedUser, details: 'Admin reason for update: ' + REASONS[Math.floor(rand() * REASONS.length)], changes: ch });
+      push({ ts: m.modified, event: 'Model Approved', user: m.modifiedUser, details: '-', changes: ch });
+    } else if (m.status === 'Rejected') {
+      push({ ts: m.modified, event: 'Model Rejected', user: m.modifiedUser, details: 'Rejected for the following reason(s):\nModel Weight total does not add up to 100%.' });
+    } else if (m.status === 'Needs Attention') {
+      var h = m.holdings[1 + Math.floor(rand() * (m.holdings.length - 1))];
+      push({ ts: m.modified, event: 'Mandatory Corp Action', user: 'System', details: 'Mandatory Corporate Action event occurred. Status set to Needs Attention. Details below.', note: 'Corporate action on ' + h.ticker + ' (' + SECURITIES[h.ticker].desc + '): mandatory reorganization effective ' + m.modified.slice(5, 7) + '/' + m.modified.slice(8, 10) + '/2026. Review the position and resubmit the model.' });
+    } else if (m.status === 'New') {
+      push({ ts: m.modified, event: 'Model Created', user: m.modifiedUser, details: 'New model created. Awaiting initial submission.' });
+    }
+    return ev;
+  }
+
   function buildModels() {
     return DEFS.map(function (d) {
       var m = {
@@ -307,6 +373,7 @@
         status: d[8], modified: d[9], modifiedUser: MDP_USERS[d[10]], confirmed: d[11], confirmedUser: d[12] ? MDP_USERS[d[12]] : null,
         minimum: MINIMUMS[d[7]], emails: '', tlh: '', pending: null, communications: []
       };
+      if (m.confirmed && m.confirmed.indexOf('.') < 0) m.confirmed += '.' + micros(hashStr('c' + m.access));
       m.holdings = buildHoldings(m);
       m.users = (PROFILE_USERS[m.manager] || []).concat(SHARED_USERS);
       // snapshots
@@ -314,30 +381,26 @@
       var rand = mulberry32(hashStr('snap' + m.access));
       var dates = ['2026-10-21', '2026-10-14', '2026-10-07', '2026-09-30'];
       if (m.confirmed) dates.push(dayOf(m.confirmed));
+      if (m.status === 'New') dates = [];
       dates.forEach(function (dt, i) {
         if (dt === '2026-10-21' || dt === dayOf(m.confirmed || '') || rand() > 0.35) m.snapshots[dt] = jitter(m.holdings, hashStr(m.access + dt) + i);
       });
-      // audit events
-      m.events = [];
-      if (m.confirmed) m.events.push({ ts: m.confirmed + '.000000', event: 'Model Confirmed', user: m.confirmedUser, details: 'Model confirmed with no further changes' });
-      var evt = { 'Approved': ['Model Approved', 'Model change approved by Home Office review'], 'Rejected': ['Model Rejected', 'Weights do not total 100.000% after price refresh'], 'In Progress': ['Model Submitted', 'Model change submitted for review'] }[m.status];
-      m.events.push({ ts: m.modified, event: evt[0], user: m.modifiedUser, details: evt[1] });
-      if (m.status === 'Approved') m.events.splice(m.events.length - 1, 0, { ts: m.modified.replace(/:\d\d\./, ':00.'), event: 'Model Submitted', user: m.modifiedUser, details: 'Model change submitted for review' });
-      m.events.sort(function (a, b) { return a.ts < b.ts ? -1 : 1; });
+      m.events = buildEvents(m);
       return m;
     });
   }
 
   window.MDP_SEED = {
-    version: 3,
+    version: 4,
     managers: [M.bk, M.af, M.pl, M.cg, M.vg, M.t12], // order used in the Model List header
     managerOptions: [M.t12, M.af, M.bk, M.cg, M.pl, M.vg], // order used in the Manager filter
     securities: SECURITIES,
     securitiesById: BY_ID,
     users: MDP_USERS,
     buildModels: buildModels,
-    tradeTypes: ['-', 'Trade to Target', 'Buy Only', 'Sell Only'],
-    statuses: ['Approved', 'In Progress', 'Rejected'],
+    tradeTypes: ['-', 'Buy', 'Sell', 'Buy/Sell (Trade To Target)', 'Adjustment (No Trade)'],
+    tradeToTarget: 'Buy/Sell (Trade To Target)',
+    statuses: ['Approved', 'In Progress', 'Needs Attention', 'New', 'Rejected'],
     personas: {
       admin: { user: 'MDC, ART', managers: null },
       blackrock: { user: 'Novak, Irina', managers: [M.bk] },

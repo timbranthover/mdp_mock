@@ -8,6 +8,13 @@
  *            today | sma                   (communication)
  *            performance | profile         (analysis)
  * URL options:  ?persona=blackrock (single-manager view)   ?reset=1 (restore seed data)
+ *
+ * Model lifecycle (mirrors the production audit trail):
+ *   edit a model           -> status In Progress, locked to the editing user
+ *   another user opens it  -> "Model Being Edited By Another User"
+ *   SUBMIT (changes, =100%)-> "Model Updated (By Admin)" + "Model Approved", weights applied
+ *   CONFIRM (no changes)   -> "Confirmed", confirmed user/date stamped
+ *   CLEAR                  -> discard edits, release the lock
  */
 (function () {
   'use strict';
@@ -15,21 +22,26 @@
   var SEED = window.MDP_SEED;
   var SEC = SEED.securities;
   var STORE_KEY = 'mdp-twin-v' + SEED.version;
+  var EPS = 0.0004;
   var app = document.getElementById('app');
 
   /* ================= helpers ================= */
   function $(s, r) { return (r || document).querySelector(s); }
   function $$(s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); }
-  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  var ESC = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return ESC[c]; }); }
   function pad(n, w) { n = String(n); while (n.length < (w || 2)) n = '0' + n; return n; }
-  function num(n, d) { return Number(n).toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d }); }
+  var NF = {};
+  function num(n, d) { var f = NF[d] || (NF[d] = new Intl.NumberFormat('en-US', { minimumFractionDigits: d, maximumFractionDigits: d })); return f.format(n); }
   function round3(n) { return Math.round(n * 1000) / 1000; }
+  function isAdmin() { return !persona.managers; }
+  function displayName(u) { var p = String(u).split(','); return p.length > 1 ? p[1].trim() + ' ' + p[0].trim() : u; }
 
   /* ---- time (America/New_York) ---- */
+  var NY = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false, timeZoneName: 'short' });
   function nyParts(d) {
-    var f = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false, timeZoneName: 'short' });
     var p = {};
-    f.formatToParts(d || new Date()).forEach(function (x) { p[x.type] = x.value; });
+    NY.formatToParts(d || new Date()).forEach(function (x) { p[x.type] = x.value; });
     if (p.hour === '24') p.hour = '00';
     return p;
   }
@@ -44,10 +56,9 @@
   }
   var fmt = {
     listMod: function (s) { var p = parseStamp(s); return p.mo + '-' + p.d + '-' + p.y + ' ' + pad(p.h % 12 || 12) + ':' + p.mi + ':' + p.s + '.' + p.f.slice(0, 3); },
-    detailMod: function (s) { var p = parseStamp(s); return p.mo + '-' + p.d + '-' + p.y + ' ' + pad(p.h % 12 || 12) + ':' + p.mi + ':' + p.s + '.' + p.f + ' ' + (p.h < 12 ? 'AM' : 'PM'); },
+    full: function (s) { var p = parseStamp(s); return p.mo + '-' + p.d + '-' + p.y + ' ' + pad(p.h % 12 || 12) + ':' + p.mi + ':' + p.s + '.' + p.f + ' ' + (p.h < 12 ? 'AM' : 'PM'); },
     conf: function (s) { var p = parseStamp(s); return p.mo + '/' + p.d + '/' + p.y + ' ' + (p.h % 12 || 12) + ':' + p.mi + ' ' + (p.h < 12 ? 'AM' : 'PM'); },
-    day: function (iso) { return iso ? iso.slice(5, 7) + '/' + iso.slice(8, 10) + '/' + iso.slice(0, 4) : ''; },
-    event: function (s) { var p = parseStamp(s); return p.mo + '/' + p.d + '/' + p.y + ' ' + (p.h % 12 || 12) + ':' + p.mi + ':' + p.s + ' ' + (p.h < 12 ? 'AM' : 'PM'); }
+    day: function (iso) { return iso ? iso.slice(5, 7) + '/' + iso.slice(8, 10) + '/' + iso.slice(0, 4) : ''; }
   };
   function isoFromDate(d) { return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
   function dateFromIso(iso) { return new Date(+iso.slice(0, 4), +iso.slice(5, 7) - 1, +iso.slice(8, 10)); }
@@ -56,6 +67,7 @@
     do { d.setDate(d.getDate() - 1); } while (d.getDay() === 0 || d.getDay() === 6);
     return isoFromDate(d);
   }
+  var EOD = prevBusinessDay(todayISO());
 
   /* ---- icons ---- */
   var I = {
@@ -70,23 +82,24 @@
     next: '<svg viewBox="0 0 12 12"><path d="M4.5 2l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>',
     first: '<svg viewBox="0 0 12 12"><path d="M6 2L2 6l4 4M10 2L6 6l4 4" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>',
     last: '<svg viewBox="0 0 12 12"><path d="M2 2l4 4-4 4M6 2l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>',
+    chev: '<svg viewBox="0 0 12 12"><path d="M4.5 2.5L8 6l-3.5 3.5" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>',
     info: '<svg viewBox="0 0 12 12"><circle cx="6" cy="6" r="5" fill="none" stroke="currentColor" stroke-width="1"/><path d="M6 5.2v3.3" stroke="currentColor" stroke-width="1.1"/><circle cx="6" cy="3.5" r=".7" fill="currentColor"/></svg>',
     audit: '<svg viewBox="0 0 16 16"><path d="M10.5 2.5H3a.5.5 0 0 0-.5.5v10.5a.5.5 0 0 0 .5.5h10a.5.5 0 0 0 .5-.5V6" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M5 6h4M5 8.5h3" stroke="currentColor" stroke-width="1.1"/><path d="M8 11l.4-1.8 5.1-5.1 1.4 1.4-5.1 5.1z" fill="none" stroke="currentColor" stroke-width="1.1"/></svg>',
     ok: '<svg viewBox="0 0 14 14"><circle cx="7" cy="7" r="6.5" fill="#3b8a3e"/><path d="M4 7.2l2 2 4-4.2" fill="none" stroke="#fff" stroke-width="1.6"/></svg>',
     warn: '<svg viewBox="0 0 14 14"><circle cx="7" cy="7" r="6.5" fill="#e08a00"/><path d="M7 3.5v4.3" stroke="#fff" stroke-width="1.7"/><circle cx="7" cy="10.2" r=".95" fill="#fff"/></svg>',
     err: '<svg viewBox="0 0 14 14"><circle cx="7" cy="7" r="6.5" fill="#c8102e"/><path d="M4.6 4.6l4.8 4.8M9.4 4.6l-4.8 4.8" stroke="#fff" stroke-width="1.6"/></svg>',
+    attn: '<svg viewBox="0 0 14 14"><path d="M7 .9l6.4 11.4H.6z" fill="#d4580a"/><path d="M7 4.6v3.8" stroke="#fff" stroke-width="1.5"/><circle cx="7" cy="10.3" r=".85" fill="#fff"/></svg>',
+    newI: '<svg viewBox="0 0 14 14"><circle cx="7" cy="7" r="6.5" fill="#1d6e8f"/><path d="M7 3.8v6.4M3.8 7h6.4" stroke="#fff" stroke-width="1.6"/></svg>',
     errBang: '<svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="7.5" fill="#c8102e"/><path d="M8 3.8v5.2" stroke="#fff" stroke-width="1.9"/><circle cx="8" cy="11.7" r="1.1" fill="#fff"/></svg>',
     refresh: '<svg viewBox="0 0 16 16"><path d="M13 8a5 5 0 1 1-1.5-3.6M13 2.5v2.5h-2.5" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>',
     excel: '<svg viewBox="0 0 16 16"><rect x="1.5" y="2.5" width="13" height="11" rx="1" fill="#1f7244"/><path d="M5 5.5l3 5M8 5.5l-3 5" stroke="#fff" stroke-width="1.3"/><path d="M9.5 5.5h3.5M9.5 8h3.5M9.5 10.5h3.5" stroke="#fff" stroke-width=".9"/></svg>'
   };
-  function statusHtml(s) {
-    if (s === 'Approved') return '<span class="st">' + I.ok + 'Approved</span>';
-    if (s === 'Rejected') return '<span class="st rej">' + I.err + 'Rejected</span>';
-    return '<span class="st">' + I.warn + esc(s) + '</span>';
-  }
+  var STATUS_ICON = { 'Approved': I.ok, 'In Progress': I.warn, 'Rejected': I.err, 'Needs Attention': I.attn, 'New': I.newI };
+  function statusHtml(s) { return '<span class="st' + (s === 'Rejected' ? ' rej' : '') + '">' + (STATUS_ICON[s] || I.warn) + esc(s) + '</span>'; }
 
   /* ================= state & persistence ================= */
   var params = new URLSearchParams(location.search);
+  var UX_CURRENT = params.get('ux') === 'current'; // reproduce production behavior where we propose improvements
   function loadModels() {
     if (params.get('reset')) { try { localStorage.removeItem(STORE_KEY); } catch (e) { /* ignore */ } }
     try {
@@ -95,66 +108,111 @@
     } catch (e) { /* ignore */ }
     return SEED.buildModels();
   }
-  function save() { try { localStorage.setItem(STORE_KEY, JSON.stringify(S.models)); } catch (e) { /* ignore */ } }
+  var saveTimer = null;
+  function save() {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(function () {
+      try { localStorage.setItem(STORE_KEY, JSON.stringify(S.models)); } catch (e) { /* ignore */ }
+    }, 150);
+  }
+  window.addEventListener('beforeunload', function () {
+    if (saveTimer) { clearTimeout(saveTimer); try { localStorage.setItem(STORE_KEY, JSON.stringify(S.models)); } catch (e) { /* ignore */ } }
+  });
 
   var persona = SEED.personas[(params.get('persona') || 'admin').toLowerCase()] || SEED.personas.admin;
+  function emptyFilters() { return { managers: [], mod: null, conf: null, status: [] }; }
   var S = {
     models: loadModels(),
-    list: {
-      pending: { managers: [], mod: null, conf: null, status: [] },
-      applied: { managers: [], mod: null, conf: null, status: [] },
-      search: '', sort: { key: null, dir: 1 }, perPage: 100, page: 1, collapsed: false
-    },
-    ui: { open: null, mgrQuery: '' },
-    drafts: {},
+    list: { pending: emptyFilters(), applied: emptyFilters(), search: '', sort: { key: null, dir: 1 }, perPage: 100, page: 1, collapsed: false },
+    ui: { open: null, q: {} },
     detailSort: {},
     snapDate: {}
   };
+  var byAccess = {};
+  S.models.forEach(function (m) { byAccess[m.access] = m; });
   function visibleManagers() { return persona.managers || SEED.managers; }
   function managerOptions() { return persona.managers || SEED.managerOptions; }
   function scopedModels() {
-    var allowed = visibleManagers();
-    return S.models.filter(function (m) { return allowed.indexOf(m.manager) > -1; });
+    if (!persona.managers) return S.models;
+    return S.models.filter(function (m) { return persona.managers.indexOf(m.manager) > -1; });
   }
-  function findModel(access) { return scopedModels().filter(function (m) { return m.access === access; })[0]; }
+  function findModel(access) { var m = byAccess[access]; return m && (!persona.managers || persona.managers.indexOf(m.manager) > -1) ? m : null; }
+  function lockedBy(m) { return m.status === 'In Progress' && m.modifiedUser !== persona.user ? m.modifiedUser : null; }
+  function logEvent(m, e) {
+    var seq = m.events.reduce(function (a, x) { return Math.max(a, x.seq || 0); }, 0) + 1;
+    e.seq = seq; m.events.push(e);
+  }
 
   /* ================= toasts / tooltip / modal ================= */
+  var toastZone = $('#toast-zone');
   function toast(msg, kind) {
-    var z = $('#toast-zone');
-    $$('.toast', z).forEach(function (t) { if (t.getAttribute('data-msg') === msg) t.remove(); });
-    while (z.children.length >= 3) z.firstChild.remove();
+    $$('.toast', toastZone).forEach(function (t) { if (t.getAttribute('data-msg') === msg) t.remove(); });
+    while (toastZone.children.length >= 3) toastZone.firstChild.remove();
     var el = document.createElement('div');
-    el.setAttribute('data-msg', msg);
     el.className = 'toast ' + (kind || 'err');
+    el.setAttribute('data-msg', msg);
     el.innerHTML = (kind === 'ok' ? I.ok : I.errBang) + '<span>' + esc(msg) + '</span><button class="x" aria-label="Dismiss">&times;</button>';
     el.querySelector('.x').onclick = function () { el.remove(); };
-    z.appendChild(el);
+    toastZone.appendChild(el);
     setTimeout(function () { el.remove(); }, 6000);
   }
-  var tip = $('#tip');
+
+  /* Tooltips: data-tip follows the cursor (used for truncated cells, like production);
+     data-tip-anchor pins a clean bubble above the element (info icons, disabled buttons). */
+  var tip = $('#tip'), tipFor = null;
+  function hideTip() { tip.style.display = 'none'; tip.className = 'tip'; tipFor = null; }
   document.addEventListener('mouseover', function (e) {
-    var t = e.target.closest('[data-tip]');
-    if (!t) { tip.style.display = 'none'; return; }
-    // only show for truncated cells unless forced
-    if (t.hasAttribute('data-tip-trunc') && t.scrollWidth <= t.clientWidth) { tip.style.display = 'none'; return; }
-    tip.textContent = t.getAttribute('data-tip');
+    var t = e.target.closest ? e.target.closest('[data-tip]') : null;
+    if (t === tipFor) return;
+    if (!t) { hideTip(); return; }
+    if (t.hasAttribute('data-tip-trunc') && t.scrollWidth <= t.clientWidth) { hideTip(); return; }
+    var text = t.getAttribute('data-tip');
+    if (!text) { hideTip(); return; }
+    tipFor = t;
+    tip.textContent = text;
     tip.style.display = 'block';
+    if (t.hasAttribute('data-tip-anchor')) {
+      tip.className = 'tip anchored';
+      var r = t.getBoundingClientRect(), w = tip.offsetWidth, h = tip.offsetHeight;
+      var left = Math.max(8, Math.min(window.innerWidth - w - 8, r.left + r.width / 2 - w / 2));
+      var top = r.top - h - 9, below = top < 4;
+      if (below) top = r.bottom + 9;
+      tip.classList.toggle('below', below);
+      tip.style.left = left + 'px'; tip.style.top = top + 'px';
+      tip.style.setProperty('--arrow-x', (r.left + r.width / 2 - left) + 'px');
+    } else {
+      tip.className = 'tip';
+      tip.style.left = (e.clientX + 14) + 'px'; tip.style.top = (e.clientY + 16) + 'px';
+    }
   });
   document.addEventListener('mousemove', function (e) {
-    if (tip.style.display === 'block') { tip.style.left = (e.clientX + 14) + 'px'; tip.style.top = (e.clientY + 16) + 'px'; }
-  });
-  function modal(title, sub, body, foot) {
+    if (tipFor && !tipFor.hasAttribute('data-tip-anchor')) { tip.style.left = (e.clientX + 14) + 'px'; tip.style.top = (e.clientY + 16) + 'px'; }
+  }, { passive: true });
+  document.addEventListener('scroll', hideTip, { passive: true, capture: true });
+
+  function modal(opts) {
     var root = $('#modal-root');
-    root.innerHTML = '<div class="modal-bg"><div class="modal" role="dialog"><div class="modal-h"><div><h2>' + esc(title) + '</h2>' + (sub ? '<div class="sub">' + esc(sub) + '</div>' : '') + '</div><button class="x" data-act="close-modal" aria-label="Close">&times;</button></div><div class="modal-b">' + body + '</div>' + (foot ? '<div class="modal-f">' + foot + '</div>' : '') + '</div></div>';
+    root.innerHTML = '<div class="modal-bg"><div class="modal ' + (opts.cls || '') + '" role="dialog" aria-modal="true">' +
+      '<div class="modal-h">' + (opts.icon || '') + '<div class="mh-t"><h2>' + esc(opts.title) + '</h2>' + (opts.sub || '') + '</div><button class="x" data-act="close-modal" aria-label="Close">&times;</button></div>' +
+      '<div class="modal-b">' + opts.body + '</div>' + (opts.foot ? '<div class="modal-f">' + opts.foot + '</div>' : '') + '</div></div>';
     $('.modal-bg', root).addEventListener('mousedown', function (e) { if (e.target.classList.contains('modal-bg')) closeModal(); });
+    var f = $('[autofocus]', root); if (f) f.focus();
   }
-  function closeModal() { $('#modal-root').innerHTML = ''; }
+  function closeModal() { var r = $('#modal-root'); if (r.firstChild) r.innerHTML = ''; }
+
+  function showLocked(m) {
+    modal({
+      cls: 'lock', icon: '<span class="mh-ic">' + I.err + '</span>', title: 'Model Being Edited By Another User',
+      body: '<p class="lock-msg">Only one user at a time is allowed to edit a model. Model is currently being edited by ' + esc(displayName(lockedBy(m))) + '. Please try again later.</p>',
+      foot: '<button class="btn btn-black" data-act="close-modal" autofocus>Close</button>'
+    });
+  }
 
   /* ================= clock ================= */
+  var clockEl = $('#gh-clock');
   function tickClock() {
-    var p = nyParts();
-    var h = +p.hour;
-    $('#gh-clock').textContent = (h % 12 || 12) + ':' + p.minute + ':' + p.second + ' ' + (h < 12 ? 'AM' : 'PM') + ' ' + (p.timeZoneName || 'ET');
+    var p = nyParts(), h = +p.hour;
+    clockEl.textContent = (h % 12 || 12) + ':' + p.minute + ':' + p.second + ' ' + (h < 12 ? 'AM' : 'PM') + ' ' + (p.timeZoneName || 'ET');
   }
   tickClock(); setInterval(tickClock, 1000);
 
@@ -181,12 +239,13 @@
   }
 
   /* ================= date picker ================= */
-  var DP = null; // {anchor, mode:'range'|'single', start, end, month:Date, onDone}
-  function openDatePicker(anchor, mode, value, onDone) {
+  var DP = null;
+  function openDatePicker(anchor, mode, value, onDone, opts) {
     var base = mode === 'range' ? (value && value[0]) : value;
-    var month = base ? dateFromIso(base) : dateFromIso(todayISO());
+    var month = dateFromIso(base || todayISO());
     month.setDate(1);
-    DP = { anchor: anchor, mode: mode, start: mode === 'range' ? (value ? value[0] : null) : value, end: mode === 'range' ? (value ? value[1] : null) : null, month: month, onDone: onDone };
+    DP = { anchor: anchor, mode: mode, start: mode === 'range' ? (value ? value[0] : null) : value, end: mode === 'range' ? (value ? value[1] : null) : null, month: month, onDone: onDone, avail: null, list: null };
+    if (opts && opts.avail) { DP.list = opts.avail; DP.avail = {}; opts.avail.forEach(function (d) { DP.avail[d] = 1; }); }
     renderDatePicker();
   }
   function closeDatePicker() { DP = null; var el = $('#pop-root .dp'); if (el) el.remove(); }
@@ -197,8 +256,7 @@
     var r = DP.anchor.getBoundingClientRect();
     var m = DP.month, y = m.getFullYear(), mo = m.getMonth();
     var first = new Date(y, mo, 1), startDow = first.getDay();
-    var cells = '';
-    ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].forEach(function (d) { cells += '<span class="dow">' + d + '</span>'; });
+    var cells = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map(function (d) { return '<span class="dow">' + d + '</span>'; }).join('');
     var today = todayISO();
     for (var i = 0; i < 42; i++) {
       var d = new Date(y, mo, 1 - startDow + i), iso = isoFromDate(d);
@@ -207,18 +265,22 @@
       if (iso === today) cls.push('today');
       if (iso === DP.start || iso === DP.end) cls.push('sel');
       else if (DP.start && DP.end && iso > DP.start && iso < DP.end) cls.push('in');
-      cells += '<button data-dp-day="' + iso + '" class="' + cls.join(' ') + '">' + d.getDate() + '</button>';
+      var na = DP.avail && !DP.avail[iso];
+      if (DP.avail) cls.push(na ? 'na' : 'has');
+      cells += '<button data-dp-day="' + iso + '" class="' + cls.join(' ') + '"' + (na ? ' aria-disabled="true" data-tip="No snapshot saved" data-tip-anchor' : DP.avail ? ' data-tip="Snapshot saved" data-tip-anchor' : '') + '>' + d.getDate() + '</button>';
     }
     var hint = DP.mode === 'range' ? (DP.start && !DP.end ? 'Select end date' : DP.start ? fmt.day(DP.start) + ' - ' + fmt.day(DP.end) : 'Select start date') : (DP.start ? fmt.day(DP.start) : 'Select a date');
     var el = document.createElement('div');
-    el.className = 'dp';
-    el.innerHTML = '<div class="dp-head"><button data-dp="prev" aria-label="Previous month">' + I.prev + '</button><span>' + first.toLocaleString('en-US', { month: 'long', year: 'numeric' }) + '</span><button data-dp="next" aria-label="Next month">' + I.next + '</button></div>' +
+    el.className = 'dp' + (DP.avail ? ' snap' : '');
+    var side = DP.avail ? '<div class="dp-side"><div class="dp-side-h">Saved Snapshots</div>' + (DP.list.length ? DP.list.map(function (d) { return '<button data-dp-day="' + d + '" class="' + (d === DP.start ? 'sel' : '') + '">' + fmt.day(d) + (d === DP.list[0] ? '<em>Latest</em>' : '') + '</button>'; }).join('') : '<div class="dp-side-empty">None saved yet</div>') + '</div>' : '';
+    if (DP.avail) hint = '<span class="legend"><i></i>Snapshot saved</span>';
+    el.innerHTML = '<div class="dp-main"><div class="dp-head"><button data-dp="prev" aria-label="Previous month">' + I.prev + '</button><span>' + first.toLocaleString('en-US', { month: 'long', year: 'numeric' }) + '</span><button data-dp="next" aria-label="Next month">' + I.next + '</button></div>' +
       '<div class="dp-grid">' + cells + '</div>' +
-      '<div class="dp-foot"><span class="hint">' + hint + '</span><span><button class="btn btn-text" data-dp="clear">Clear</button>' + (DP.mode === 'range' ? ' <button class="btn btn-dark" data-dp="done">Done</button>' : '') + '</span></div>';
-    var left = r.left + window.scrollX, top = r.bottom + window.scrollY + 2;
-    if (left + 252 > window.innerWidth - 10) left = r.right + window.scrollX - 252;
-    el.style.left = left + 'px'; el.style.top = top + 'px';
+      '<div class="dp-foot"><span class="hint">' + hint + '</span><span><button class="btn btn-text" data-dp="clear">Clear</button>' + (DP.mode === 'range' ? ' <button class="btn btn-dark" data-dp="done">Done</button>' : '') + '</span></div></div>' + side;
     root.appendChild(el);
+    var w = el.offsetWidth, left = r.left + window.scrollX, top = r.bottom + window.scrollY + 2;
+    if (left + w > window.innerWidth - 10) left = r.right + window.scrollX - w;
+    el.style.left = left + 'px'; el.style.top = top + 'px';
   }
   document.addEventListener('click', function (e) {
     if (!DP) return;
@@ -226,6 +288,7 @@
     if (!dp) { if (!e.target.closest('[data-dp-anchor]')) closeDatePicker(); return; }
     var day = e.target.closest('[data-dp-day]'), act = e.target.closest('[data-dp]');
     if (day) {
+      if (day.classList.contains('na')) { e.stopPropagation(); return; }
       var iso = day.getAttribute('data-dp-day');
       if (DP.mode === 'single') { var cb = DP.onDone; closeDatePicker(); cb(iso); return; }
       if (!DP.start || DP.end) { DP.start = iso; DP.end = null; }
@@ -234,6 +297,7 @@
       renderDatePicker();
     } else if (act) {
       var a = act.getAttribute('data-dp');
+      if (a === 'clear' && DP.avail) { closeDatePicker(); e.stopPropagation(); return; }
       if (a === 'prev') { DP.month.setMonth(DP.month.getMonth() - 1); renderDatePicker(); }
       else if (a === 'next') { DP.month.setMonth(DP.month.getMonth() + 1); renderDatePicker(); }
       else if (a === 'clear') { var c = DP.onDone; closeDatePicker(); c(null); }
@@ -245,20 +309,16 @@
   /* =====================================================================
    * MODEL LIST
    * ===================================================================== */
-  function filterCount(f) {
-    return (f.managers.length ? 1 : 0) + (f.mod ? 1 : 0) + (f.conf ? 1 : 0) + (f.status.length ? 1 : 0);
-  }
+  function filterCount(f) { return (f.managers.length ? 1 : 0) + (f.mod ? 1 : 0) + (f.conf ? 1 : 0) + (f.status.length ? 1 : 0); }
   function listRows() {
     var L = S.list, f = L.applied, q = L.search.trim().toLowerCase();
+    var mset = f.managers.length ? f.managers : null, sset = f.status.length ? f.status : null;
     var rows = scopedModels().filter(function (m) {
-      if (f.managers.length && f.managers.indexOf(m.manager) < 0) return false;
-      if (f.status.length && f.status.indexOf(m.status) < 0) return false;
+      if (mset && mset.indexOf(m.manager) < 0) return false;
+      if (sset && sset.indexOf(m.status) < 0) return false;
       if (f.mod) { var d = m.modified.slice(0, 10); if (d < f.mod[0] || d > f.mod[1]) return false; }
       if (f.conf) { if (!m.confirmed) return false; var c = m.confirmed.slice(0, 10); if (c < f.conf[0] || c > f.conf[1]) return false; }
-      if (q) {
-        var hay = [m.manager, m.name, m.access, m.swp, m.type, m.modifiedUser, m.confirmedUser, m.status].join(' ').toLowerCase();
-        if (hay.indexOf(q) < 0) return false;
-      }
+      if (q && (m.manager + '\u0001' + m.name + '\u0001' + m.access + '\u0001' + m.swp + '\u0001' + m.type + '\u0001' + m.modifiedUser + '\u0001' + (m.confirmedUser || '') + '\u0001' + m.status).toLowerCase().indexOf(q) < 0) return false;
       return true;
     });
     var key = L.sort.key, dir = L.sort.dir;
@@ -266,9 +326,8 @@
       if (key) {
         var va = a[key], vb = b[key];
         if (va == null) va = ''; if (vb == null) vb = '';
-        if (typeof va === 'number' && typeof vb === 'number') return (va - vb) * dir;
-        va = String(va).toLowerCase(); vb = String(vb).toLowerCase();
-        if (va !== vb) return (va < vb ? -1 : 1) * dir;
+        if (typeof va === 'number' && typeof vb === 'number') { if (va !== vb) return (va - vb) * dir; }
+        else { va = String(va).toLowerCase(); vb = String(vb).toLowerCase(); if (va !== vb) return (va < vb ? -1 : 1) * dir; }
       }
       if (a.manager !== b.manager) return a.manager.toLowerCase() < b.manager.toLowerCase() ? -1 : 1;
       return a.name.toLowerCase() < b.name.toLowerCase() ? -1 : 1;
@@ -283,14 +342,15 @@
     { key: 'swp', label: 'SWP/AAP', w: 64 },
     { key: 'type', label: 'Model Type', w: 78 },
     { key: 'accounts', label: 'Accounts', w: 64, r: 1 },
-    { key: 'aum', label: 'AUM(M)', w: 74, r: 1, info: 'Assets under management in millions (USD), as of prior close' },
+    { key: 'aum', label: 'AUM(M)', w: 74, r: 1, info: 'Assets under management in millions (USD) as of the last end-of-day close' },
     { key: 'modifiedUser', label: 'Modified User', w: 124 },
     { key: 'modified', label: 'Modified Date', w: 150 },
     { key: 'confirmedUser', label: 'Confirmed User', w: 124 },
     { key: 'confirmed', label: 'Confirmed Date', w: 136 },
-    { key: 'status', label: 'Status', w: 92 },
+    { key: 'status', label: 'Status', w: 112 },
     { key: null, label: 'Audit Trail', w: 64 }
   ];
+  var LIST_COLGROUP = '<colgroup>' + LIST_COLS.map(function (c) { return '<col style="width:' + c.w + 'px">'; }).join('') + '</colgroup>';
 
   function renderList() {
     var L = S.list;
@@ -302,8 +362,8 @@
           '<div class="kv mgr"><span class="k">Manager</span><span class="v">' + esc(visibleManagers().join(', ')) + '</span></div>' +
           '<div class="kv user"><span class="k">User</span><span class="v">' + esc(persona.user) + '</span></div>' +
           '<div class="ml-tools"><label class="search-box">' + I.search + '<input id="ml-search" placeholder="Search" value="' + esc(L.search) + '" autocomplete="off"></label>' +
-            '<button class="icon-btn" data-act="list-export" data-tip="Download">' + I.download + '</button>' +
-            '<button class="icon-btn" data-act="print" data-tip="Print">' + I.print + '</button></div>' +
+            '<button class="icon-btn" data-act="list-export" data-tip="Download" data-tip-anchor>' + I.download + '</button>' +
+            '<button class="icon-btn" data-act="print" data-tip="Print" data-tip-anchor>' + I.print + '</button></div>' +
         '</section>' +
         '<section class="card grid-card">' +
           '<div id="ml-filters"></div>' +
@@ -314,92 +374,109 @@
       '</div>';
     renderFilters();
     renderListGrid();
-    $('#ml-search').addEventListener('input', function (e) { S.list.search = e.target.value; S.list.page = 1; renderListGrid(); });
+    var raf = 0;
+    $('#ml-search').addEventListener('input', function (e) {
+      S.list.search = e.target.value; S.list.page = 1;
+      cancelAnimationFrame(raf); raf = requestAnimationFrame(renderListGrid);
+    });
   }
 
-  function mgrLabel(sel) {
-    if (!sel.length) return '<span class="txt ph">Select Manager</span>';
+  /* ---- searchable multi-select (Manager*, Status) ---- */
+  var MULTI = {
+    managers: { opts: managerOptions, ph: 'Select Manager', width: 236 },
+    status: { opts: function () { return SEED.statuses; }, ph: 'Select status', width: 246 }
+  };
+  function multiLabel(key) {
+    var sel = S.list.pending[key], n = MULTI[key].opts().length;
+    if (!sel.length) return '<span class="txt ph">' + MULTI[key].ph + '</span>';
     if (sel.length === 1) return '<span class="txt">' + esc(sel[0]) + '</span>';
-    if (sel.length === managerOptions().length) return '<span class="txt">All Selected</span>';
+    if (sel.length === n) return '<span class="txt">All Selected</span>';
     return '<span class="txt">' + sel.length + ' Selected</span>';
   }
-  function rangeLabel(r) { return r ? '<span class="txt">' + fmt.day(r[0]) + ' - ' + fmt.day(r[1]) + '</span>' : '<span class="txt ph">Select</span>'; }
+  function multiField(key, cls, label) {
+    var open = S.ui.open === key;
+    var ctl = open
+      ? '<div class="ctl focus" data-act="noop">' + I.search + '<input id="ms-q" data-key="' + key + '" value="' + esc(S.ui.q[key] || '') + '" placeholder="Search..." autocomplete="off"></div>'
+      : '<div class="ctl" data-act="ms-toggle" data-key="' + key + '">' + multiLabel(key) + I.down + '</div>';
+    return '<div class="field ' + cls + '" data-ms="' + key + '"><span class="lbl">' + label + '</span>' + ctl + (open ? multiDropdown(key) : '') + '</div>';
+  }
+  function multiDropdown(key) {
+    var sel = S.list.pending[key], opts = MULTI[key].opts(), q = (S.ui.q[key] || '').toLowerCase();
+    var shown = q ? opts.filter(function (o) { return o.toLowerCase().indexOf(q) > -1; }) : opts;
+    var all = sel.length === opts.length, none = !sel.length;
+    var html = '<div class="dd" id="ms-dd" style="width:' + MULTI[key].width + 'px">';
+    if (!q) html += '<div class="dd-opt" data-act="ms-all" data-key="' + key + '"><span class="cb ' + (all ? 'on' : none ? '' : 'part') + '"></span>Select All</div>';
+    shown.forEach(function (o) {
+      html += '<div class="dd-opt" data-act="ms-opt" data-key="' + key + '" data-val="' + esc(o) + '"><span class="cb' + (sel.indexOf(o) > -1 ? ' on' : '') + '"></span>' + esc(o) + '</div>';
+    });
+    if (!shown.length) html += '<div class="dd-opt dd-empty">No matches</div>';
+    return html + '</div>';
+  }
 
+  function rangeLabel(r) { return r ? '<span class="txt">' + fmt.day(r[0]) + ' - ' + fmt.day(r[1]) + '</span>' : '<span class="txt ph">Select</span>'; }
   function renderFilters() {
-    var P = S.list.pending, open = S.ui.open;
-    var mgrCtl = open === 'mgr'
-      ? '<div class="ctl" data-act="noop">' + I.search + '<input id="mgr-q" value="' + esc(S.ui.mgrQuery || (P.managers.length === 1 ? P.managers[0] : '')) + '" placeholder="Search" autocomplete="off"></div>'
-      : '<div class="ctl" data-act="dd-mgr">' + mgrLabel(P.managers) + I.down + '</div>';
-    var stLabel = P.status.length ? '<span class="txt">' + esc(P.status.join(', ')) + '</span>' : '<span class="txt ph">Select status</span>';
+    var P = S.list.pending;
     var hasAny = filterCount(P) || filterCount(S.list.applied);
     $('#ml-filters').innerHTML =
       '<div class="filters' + (S.list.collapsed ? ' collapsed' : '') + '">' +
-        '<div class="field f-mgr"><span class="lbl">Manager*</span>' + mgrCtl + (open === 'mgr' ? mgrDropdown() : '') + '</div>' +
+        multiField('managers', 'f-mgr', 'Manager*') +
         '<div class="field f-mod"><span class="lbl">Modified Date Range</span><div class="ctl cal" data-act="dp-mod" data-dp-anchor>' + rangeLabel(P.mod) + I.cal + '</div></div>' +
         '<div class="field f-conf"><span class="lbl">Confirmed Date Range</span><div class="ctl cal" data-act="dp-conf" data-dp-anchor>' + rangeLabel(P.conf) + I.cal + '</div></div>' +
-        '<div class="field f-status"><span class="lbl">Status</span><div class="ctl" data-act="dd-status">' + stLabel + I.down + '</div>' + (open === 'status' ? statusDropdown() : '') + '</div>' +
+        multiField('status', 'f-status', 'Status') +
         '<div class="spacer"></div>' +
         '<button class="btn btn-clear' + (hasAny ? ' on' : '') + '" data-act="f-clear">Clear</button>' +
         '<button class="btn btn-dark" data-act="f-apply">Apply</button>' +
       '</div>';
     var n = filterCount(P);
     $('#ml-pill').innerHTML = '<div class="filter-pill-wrap' + (S.list.collapsed ? ' top' : '') + '"><button class="filter-pill' + (S.list.collapsed ? ' collapsed' : '') + '" data-act="f-toggle">(' + n + ') ' + (n ? 'Filters Applied' : 'No Filters Applied') + ' ' + I.up + '</button></div>';
-    var q = $('#mgr-q');
+    var q = $('#ms-q');
     if (q) {
       q.focus(); q.setSelectionRange(q.value.length, q.value.length);
-      q.addEventListener('input', function (e) { S.ui.mgrQuery = e.target.value; var dd = $('#mgr-dd'); if (dd) dd.outerHTML = mgrDropdown(); });
+      q.addEventListener('input', function (e) {
+        var key = e.target.getAttribute('data-key');
+        S.ui.q[key] = e.target.value;
+        var dd = $('#ms-dd'); if (dd) dd.outerHTML = multiDropdown(key);
+      });
     }
   }
-  function mgrDropdown() {
-    var P = S.list.pending, opts = managerOptions(), q = (S.ui.mgrQuery || '').toLowerCase();
-    if (q && P.managers.length === 1 && q === P.managers[0].toLowerCase()) q = '';
-    var shown = opts.filter(function (o) { return !q || o.toLowerCase().indexOf(q) > -1; });
-    var all = P.managers.length === opts.length, none = !P.managers.length;
-    var html = '<div class="dd" id="mgr-dd" style="width:230px">';
-    if (!q) html += '<div class="dd-opt" data-act="mgr-all"><span class="cb ' + (all ? 'on' : none ? '' : 'part') + '"></span>Select All</div>';
-    shown.forEach(function (o) {
-      html += '<div class="dd-opt" data-act="mgr-opt" data-val="' + esc(o) + '"><span class="cb' + (P.managers.indexOf(o) > -1 ? ' on' : '') + '"></span>' + esc(o) + '</div>';
-    });
-    if (!shown.length) html += '<div class="dd-opt" style="color:#777;cursor:default">No matches</div>';
-    return html + '</div>';
-  }
-  function statusDropdown() {
-    var P = S.list.pending;
-    return '<div class="dd">' + SEED.statuses.map(function (s) {
-      return '<div class="dd-opt" data-act="st-opt" data-val="' + esc(s) + '"><span class="cb' + (P.status.indexOf(s) > -1 ? ' on' : '') + '"></span>' + esc(s) + '</div>';
-    }).join('') + '</div>';
+  function refreshMulti(key) {
+    // update only the open dropdown + pill + clear button (keeps the search box focused)
+    var dd = $('#ms-dd'); if (dd) dd.outerHTML = multiDropdown(key);
+    var n = filterCount(S.list.pending);
+    var pill = $('.filter-pill'); if (pill) pill.innerHTML = '(' + n + ') ' + (n ? 'Filters Applied' : 'No Filters Applied') + ' ' + I.up;
+    var cl = $('[data-act="f-clear"]'); if (cl) cl.classList.toggle('on', !!(n || filterCount(S.list.applied)));
   }
 
+  function rowHtml(m) {
+    var locked = lockedBy(m);
+    return '<tr>' +
+      '<td data-tip="' + esc(m.manager) + '" data-tip-trunc>' + esc(m.manager) + '</td>' +
+      '<td data-tip="' + esc(m.name) + '" data-tip-trunc><a class="lnk" href="#/model/' + encodeURIComponent(m.access) + '/info/details"' + (locked ? ' data-locked="' + esc(m.access) + '"' : '') + '>' + esc(m.name) + '</a></td>' +
+      '<td class="b">' + esc(m.access) + '</td>' +
+      '<td class="b">' + (m.swp ? esc(m.swp) : '-') + '</td>' +
+      '<td>' + esc(m.type) + '</td>' +
+      '<td class="r">' + num(m.accounts, 0) + '</td>' +
+      '<td class="r">' + num(m.aum, 2) + '</td>' +
+      '<td>' + esc(m.modifiedUser) + '</td>' +
+      '<td>' + fmt.listMod(m.modified) + '</td>' +
+      '<td>' + (m.confirmedUser ? esc(m.confirmedUser) : '-') + '</td>' +
+      '<td>' + (m.confirmed ? fmt.conf(m.confirmed) : '-') + '</td>' +
+      '<td>' + statusHtml(m.status) + '</td>' +
+      '<td><button class="audit-btn" data-act="audit" data-acc="' + esc(m.access) + '" aria-label="Audit trail">' + I.audit + '</button></td>' +
+    '</tr>';
+  }
   function renderListGrid() {
     var L = S.list, rows = listRows();
     var total = rows.length, pages = Math.max(1, Math.ceil(total / L.perPage));
     if (L.page > pages) L.page = pages;
     var start = (L.page - 1) * L.perPage, slice = rows.slice(start, start + L.perPage);
-
-    var head = '<colgroup>' + LIST_COLS.map(function (c) { return '<col style="width:' + c.w + 'px">'; }).join('') + '</colgroup><thead><tr>' +
-      LIST_COLS.map(function (c) {
-        var s = c.key && L.sort.key === c.key ? '<span class="sort">' + (L.sort.dir > 0 ? '&#9650;' : '&#9660;') + '</span>' : '';
-        var info = c.info ? '<span class="ii" data-tip="' + esc(c.info) + '">' + I.info + '</span>' : '';
-        return '<th class="' + (c.r ? 'r' : '') + '"' + (c.key ? ' data-act="list-sort" data-key="' + c.key + '"' : '') + '>' + c.label + info + s + '</th>';
-      }).join('') + '</tr></thead>';
-    var body = slice.length ? slice.map(function (m) {
-      return '<tr>' +
-        '<td data-tip="' + esc(m.manager) + '" data-tip-trunc>' + esc(m.manager) + '</td>' +
-        '<td data-tip="' + esc(m.name) + '" data-tip-trunc><a class="lnk" href="#/model/' + encodeURIComponent(m.access) + '/info/details">' + esc(m.name) + '</a></td>' +
-        '<td class="b">' + esc(m.access) + '</td>' +
-        '<td class="b">' + (m.swp ? esc(m.swp) : '-') + '</td>' +
-        '<td>' + esc(m.type) + '</td>' +
-        '<td class="r">' + num(m.accounts, 0) + '</td>' +
-        '<td class="r">' + num(m.aum, 2) + '</td>' +
-        '<td>' + esc(m.modifiedUser) + '</td>' +
-        '<td>' + fmt.listMod(m.modified) + '</td>' +
-        '<td>' + (m.confirmedUser ? esc(m.confirmedUser) : '-') + '</td>' +
-        '<td>' + (m.confirmed ? fmt.conf(m.confirmed) : '-') + '</td>' +
-        '<td>' + statusHtml(m.status) + '</td>' +
-        '<td><button class="audit-btn" data-act="audit" data-acc="' + esc(m.access) + '" aria-label="Audit trail">' + I.audit + '</button></td>' +
-      '</tr>';
-    }).join('') : '<tr class="empty-row"><td colspan="13">No Rows To Show</td></tr>';
-    $('#ml-table').innerHTML = head + '<tbody>' + body + '</tbody>';
+    var head = '<thead><tr>' + LIST_COLS.map(function (c) {
+      var s = c.key && L.sort.key === c.key ? '<span class="sort">' + (L.sort.dir > 0 ? '&#9650;' : '&#9660;') + '</span>' : '';
+      var info = c.info ? '<span class="ii" data-tip="' + esc(c.info) + '" data-tip-anchor>' + I.info + '</span>' : '';
+      return '<th class="' + (c.r ? 'r' : '') + '"' + (c.key ? ' data-act="list-sort" data-key="' + c.key + '"' : '') + '>' + c.label + info + s + '</th>';
+    }).join('') + '</tr></thead>';
+    var body = slice.length ? slice.map(rowHtml).join('') : '<tr class="empty-row"><td colspan="13">No Rows To Show</td></tr>';
+    $('#ml-table').innerHTML = LIST_COLGROUP + head + '<tbody>' + body + '</tbody>';
 
     var from = total ? start + 1 : 0, to = Math.min(start + L.perPage, total);
     $('#ml-foot').innerHTML =
@@ -411,8 +488,6 @@
         '<button data-act="pg" data-to="next"' + (L.page >= pages ? ' disabled' : '') + ' aria-label="Next page">' + I.next + '</button>' +
         '<button data-act="pg" data-to="last"' + (L.page >= pages ? ' disabled' : '') + ' aria-label="Last page">' + I.last + '</button>' +
         '<input class="goto" id="ml-goto" value="' + L.page + '"><button class="go" data-act="pg-go">Go</button></div>';
-    $('#ml-pp').addEventListener('change', function (e) { L.perPage = +e.target.value; L.page = 1; renderListGrid(); });
-    $('#ml-goto').addEventListener('keydown', function (e) { if (e.key === 'Enter') goPage(); });
   }
   function goPage() {
     var L = S.list, pages = Math.max(1, Math.ceil(listRows().length / L.perPage));
@@ -421,12 +496,31 @@
     L.page = p; renderListGrid();
   }
 
+  /* ---- audit trail ---- */
+  function eventsDesc(m) {
+    return m.events.slice().sort(function (a, b) { return a.ts !== b.ts ? (a.ts < b.ts ? 1 : -1) : (b.seq || 0) - (a.seq || 0); });
+  }
+  function changesTable(changes) {
+    return '<table class="chg-tbl"><thead><tr><th>Ticker</th><th>Description</th><th class="r">Previous Weight</th><th class="r">New Weight</th><th class="r">Change</th></tr></thead><tbody>' +
+      changes.map(function (c) {
+        var s = SEC[c.ticker], d = round3(c.to - c.from);
+        return '<tr><td>' + esc(c.ticker) + '</td><td>' + esc(s ? s.desc : c.ticker === 'USD Cash' ? 'USD Cash' : '') + '</td><td class="r">' + c.from.toFixed(3) + '%</td><td class="r">' + c.to.toFixed(3) + '%</td><td class="r ' + (d > EPS ? 'pos' : d < -EPS ? 'neg' : '') + '">' + (d > EPS ? '+' : '') + d.toFixed(3) + '%</td></tr>';
+      }).join('') + '</tbody></table>';
+  }
   function showAudit(m) {
-    var ev = m.events.slice().sort(function (a, b) { return a.ts < b.ts ? 1 : -1; });
-    var body = '<table class="grid"><colgroup><col style="width:170px"><col style="width:150px"><col style="width:140px"><col></colgroup><thead><tr><th>Timestamp</th><th>Event</th><th>User</th><th>Details</th></tr></thead><tbody>' +
-      (ev.length ? ev.map(function (e) { return '<tr><td>' + fmt.event(e.ts) + '</td><td>' + esc(e.event) + '</td><td>' + esc(e.user) + '</td><td data-tip="' + esc(e.details) + '" data-tip-trunc>' + esc(e.details) + '</td></tr>'; }).join('') : '<tr class="empty-row"><td colspan="4">No Rows To Show</td></tr>') +
-      '</tbody></table>';
-    modal('Audit Trail', m.name + '  |  ' + m.access, body, '<button class="btn btn-dark" data-act="close-modal">Close</button>');
+    var ev = eventsDesc(m);
+    var rows = ev.map(function (e, i) {
+      var exp = (e.changes && e.changes.length) || e.note;
+      return '<tr class="ev' + (exp ? ' exp' : '') + '"' + (exp ? ' data-act="audit-exp" data-i="' + i + '"' : '') + '><td class="chevc">' + (exp ? I.chev : '') + '</td><td>' + fmt.full(e.ts) + '</td><td>' + esc(e.event) + '</td><td>' + esc(e.user) + '</td><td class="det">' + esc(e.details) + '</td></tr>' +
+        (exp ? '<tr class="ev-x" data-x="' + i + '" hidden><td></td><td colspan="4">' + (e.note ? '<div class="ev-note">' + esc(e.note) + '</div>' : '') + (e.changes ? changesTable(e.changes) : '') + '</td></tr>' : '');
+    }).join('');
+    modal({
+      cls: 'audit', title: 'Audit Trail',
+      body: '<div class="audit-meta"><div><b>Strategy Name:</b> ' + esc(m.name) + '</div><div><b>Access:</b> ' + esc(m.access) + '</div><div><b>SWP/AAP:</b> ' + esc(m.swp) + '</div></div>' +
+        '<div class="audit-scroll"><table class="grid audit-grid"><colgroup><col style="width:26px"><col style="width:23%"><col style="width:20%"><col style="width:18%"><col></colgroup><thead><tr><th></th><th>Timestamp</th><th>Event</th><th>User</th><th>Details</th></tr></thead><tbody>' +
+        (rows || '<tr class="empty-row"><td colspan="5">No Rows To Show</td></tr>') + '</tbody></table></div>',
+      foot: '<button class="btn btn-tan" data-act="close-modal">Cancel</button>'
+    });
   }
 
   /* =====================================================================
@@ -438,31 +532,27 @@
     communication: [['today', "Today's Change"], ['sma', 'SMA Communication']],
     analysis: [['performance', 'Performance'], ['profile', 'Profile']]
   };
+  var CASH = 'USD Cash';
+  function secFor(t) { return t === CASH ? { ticker: CASH, desc: 'USD Cash', id: '-', price: 1, info: false } : SEC[t]; }
 
-  function secFor(t) { return t === 'USD Cash' ? { ticker: 'USD Cash', desc: 'USD Cash', id: '-', price: 1, info: false } : SEC[t]; }
-
-  function getDraft(m) {
-    if (!S.drafts[m.access]) {
-      var basis = m.pending || null;
-      var rows = m.holdings.map(function (h) {
-        var p = basis ? basis.filter(function (x) { return x.ticker === h.ticker; })[0] : null;
-        return { ticker: h.ticker, weight: h.weight, nw: p ? p.nw : h.weight, tt: p ? p.tt : '-', dnb: p ? p.dnb : false, dns: p ? p.dns : false, notes: p ? p.notes : '', added: false };
-      });
-      if (basis) basis.forEach(function (p) {
-        if (!rows.some(function (r) { return r.ticker === p.ticker; })) rows.push({ ticker: p.ticker, weight: 0, nw: p.nw, tt: p.tt, dnb: p.dnb, dns: p.dns, notes: p.notes, added: true });
-      });
-      S.drafts[m.access] = { rows: rows };
-    }
-    return S.drafts[m.access];
-  }
-  function draftTotal(d) { return round3(d.rows.reduce(function (a, r) { return a + (+r.nw || 0); }, 0)); }
-  function draftChanged(d) {
-    return d.rows.some(function (r) { return Math.abs((+r.nw || 0) - r.weight) > 0.0004 || r.tt !== '-' || r.dnb || r.dns || r.notes || r.added; });
+  function metaHtml(m) {
+    return '<div class="mf"><span class="k">Strategy Name</span><span class="v">' + esc(m.name) + '</span></div>' +
+      '<div class="mf"><span class="k">Access</span><span class="v">' + esc(m.access) + '</span></div>' +
+      '<div class="mf"><span class="k">SWP/AAP</span><span class="v">' + (m.swp ? esc(m.swp) : 'N/A') + '</span></div>' +
+      '<div class="mf"><span class="k">Modified</span><span class="v">' + fmt.full(m.modified) + '</span></div>' +
+      '<div class="mf"><span class="k">Confirmed</span><span class="v">' + (m.confirmed ? fmt.full(m.confirmed) : 'N/A') + '</span></div>' +
+      '<div class="mf"><span class="k">Status</span><span class="v">' + statusHtml(m.status) + '</span></div>' +
+      '<div class="meta-tools"><button class="icon-btn" data-act="model-export" data-acc="' + esc(m.access) + '" data-tip="Download" data-tip-anchor>' + I.download + '</button><button class="icon-btn" data-act="print" data-tip="Print" data-tip-anchor>' + I.print + '</button></div>';
   }
 
   function renderDetail(access, tab, sub) {
     var m = findModel(access);
-    if (!m) { toast('Model ' + access + ' was not found'); location.hash = '#/'; return; }
+    if (!m || lockedBy(m)) {
+      // fall back to the list, then show the reason on top of it
+      skipRoute = true; location.replace('#/'); current.access = null; renderList();
+      if (m) showLocked(m); else toast('Model ' + access + ' was not found');
+      return;
+    }
     if (!SUBS[tab]) tab = 'info';
     if (!SUBS[tab].some(function (s) { return s[0] === sub; })) sub = SUBS[tab][0][0];
     var base = '#/model/' + encodeURIComponent(access) + '/';
@@ -471,39 +561,71 @@
       '<div class="page">' +
         '<section class="card d-head">' +
           '<div class="tabs big">' + TABS.map(function (t) { return '<a href="' + base + t[0] + '/' + t[2] + '" class="' + (t[0] === tab ? 'on' : '') + '">' + t[1] + '</a>'; }).join('') + '</div>' +
-          '<div class="meta">' +
-            '<div class="mf"><span class="k">Strategy Name</span><span class="v">' + esc(m.name) + '</span></div>' +
-            '<div class="mf"><span class="k">Access</span><span class="v">' + esc(m.access) + '</span></div>' +
-            '<div class="mf"><span class="k">SWP/AAP</span><span class="v">' + (m.swp ? esc(m.swp) : 'N/A') + '</span></div>' +
-            '<div class="mf"><span class="k">Modified</span><span class="v">' + fmt.detailMod(m.modified) + '</span></div>' +
-            '<div class="mf"><span class="k">Confirmed</span><span class="v">' + (m.confirmed ? fmt.conf(m.confirmed) : 'N/A') + '</span></div>' +
-            '<div class="mf"><span class="k">Status</span><span class="v">' + statusHtml(m.status) + '</span></div>' +
-            '<div class="meta-tools"><button class="icon-btn" data-act="model-export" data-acc="' + esc(m.access) + '" data-tip="Download">' + I.download + '</button><button class="icon-btn" data-act="print" data-tip="Print">' + I.print + '</button></div>' +
-          '</div>' +
+          '<div class="meta" id="d-meta">' + metaHtml(m) + '</div>' +
         '</section>' +
         '<section class="card d-body">' +
           '<div class="tabs small">' + SUBS[tab].map(function (s) { return '<a href="' + base + tab + '/' + s[0] + '" class="' + (s[0] === sub ? 'on' : '') + '">' + s[1] + '</a>'; }).join('') + '</div>' +
           '<div id="d-content"></div>' +
         '</section>' +
       '</div>';
-    var c = $('#d-content');
-    ({
-      details: renderModelDetails, options: renderOptions, snapshot: renderSnapshot,
-      today: renderToday, sma: renderSma, performance: renderPerformance, profile: renderProfile
-    })[sub](m, c);
+    ({ details: renderModelDetails, options: renderOptions, snapshot: renderSnapshot, today: renderToday, sma: renderSma, performance: renderPerformance, profile: renderProfile })[sub](m, $('#d-content'));
+  }
+
+  /* ---------- draft (edit session) ---------- */
+  function newRow(t, w) { return { ticker: t, weight: w, nw: w, tt: '-', dnb: false, dns: false, notes: '', added: false }; }
+  function getDraft(m) {
+    if (!m.draft) m.draft = { rows: m.holdings.map(function (h) { return newRow(h.ticker, h.weight); }), live: false };
+    if (!m.draft.rows.some(function (r) { return r.ticker === CASH; })) m.draft.rows.unshift(newRow(CASH, 0));
+    return m.draft;
+  }
+  function rowOf(d, t) { for (var i = 0; i < d.rows.length; i++) if (d.rows[i].ticker === t) return d.rows[i]; return null; }
+  function draftTotal(d) { var s = 0; for (var i = 0; i < d.rows.length; i++) s += (+d.rows[i].nw || 0); return round3(s); }
+  function badWeight(v) { return v === '' || isNaN(+v) || +v < 0 || +v > 100; }
+  function diff(m, d) {
+    var base = {}, seen = {}, changes = [];
+    m.holdings.forEach(function (h) { base[h.ticker] = h.weight; });
+    d.rows.forEach(function (r) {
+      seen[r.ticker] = 1;
+      var from = base[r.ticker] || 0, to = round3(+r.nw || 0);
+      if (Math.abs(to - from) > EPS || (r.added && !(r.ticker in base))) changes.push({ ticker: r.ticker, from: from, to: to });
+    });
+    m.holdings.forEach(function (h) { if (!seen[h.ticker]) changes.push({ ticker: h.ticker, from: h.weight, to: 0 }); });
+    var other = d.rows.some(function (r) { return r.tt !== '-' || r.dnb || r.dns || r.notes; });
+    return { changes: changes, dirty: changes.length > 0 || other };
+  }
+  /* First edit puts the model In Progress and locks it to the current user. */
+  function touch(m) {
+    var d = getDraft(m);
+    if (!d.live) {
+      d.live = true;
+      d.prev = { status: m.status, modified: m.modified, modifiedUser: m.modifiedUser };
+      m.status = 'In Progress'; m.modified = nowStamp(); m.modifiedUser = persona.user;
+      var meta = $('#d-meta'); if (meta) meta.innerHTML = metaHtml(m);
+    }
+    save();
+  }
+  function discardDraft(m) {
+    var d = m.draft;
+    if (d && d.live && d.prev) { m.status = d.prev.status; m.modified = d.prev.modified; m.modifiedUser = d.prev.modifiedUser; }
+    delete m.draft;
+    save();
   }
 
   /* ---------- Model Details ---------- */
   var MD_COLS = [
     { key: 'ticker', label: 'Ticker', w: 92 }, { key: 'desc', label: 'Description', w: 196 }, { key: 'id', label: 'CUSIP', w: 98 },
-    { key: 'price', label: 'Price ($)', w: 96, r: 1 }, { key: 'weight', label: 'Weight', w: 84, r: 1 }, { key: 'nw', label: 'New Weight', w: 132, r: 1 },
-    { key: 'chg', label: 'Weight Change', w: 100, r: 1 }, { key: null, label: 'Trade Type', w: 156 }, { key: null, label: 'Do Not Buy', w: 86 },
-    { key: null, label: 'Do Not Sell', w: 86 }, { key: null, label: 'Notes', w: 262 }, { key: null, label: '', w: 30 }
+    { key: 'price', label: 'Price ($)', w: 100, r: 1 }, { key: 'weight', label: 'Weight', w: 84, r: 1 }, { key: 'nw', label: 'New Weight', w: 132, r: 1 },
+    { key: 'chg', label: 'Weight Change', w: 112, r: 1 }, { key: null, label: 'Trade Type', w: 200 }, { key: null, label: 'Do Not Buy', w: 84 },
+    { key: null, label: 'Do Not Sell', w: 84 }, { key: null, label: 'Notes', w: 262 }, { key: null, label: '', w: 84 }
   ];
+  var MD_COLGROUP = '<colgroup>' + MD_COLS.map(function (c) { return '<col style="width:' + c.w + 'px">'; }).join('') + '</colgroup>';
+  var TT_OPTS = {};
+  SEED.tradeTypes.forEach(function (sel) {
+    TT_OPTS[sel] = SEED.tradeTypes.map(function (x) { return '<option' + (x === sel ? ' selected' : '') + '>' + esc(x) + '</option>'; }).join('');
+  });
+
   function renderModelDetails(m, c) {
-    var d = getDraft(m);
     c.innerHTML =
-      (m.pending ? '<div class="pending-note">This model has a submitted change awaiting confirmation. Review the new weights and CONFIRM to apply them.</div>' : '') +
       '<div class="md-bar">' +
         '<div class="add-wrap"><span class="lbl">Add Ticker/CUSIP/CINS/SEDOL (For UCITS must use CINS)</span><div class="add-row"><input id="md-add" placeholder="Eg. AAPL,AMZN,MSFT" autocomplete="off"><button class="btn" data-act="md-add">Add</button></div></div>' +
         '<div class="md-actions"><span class="mt">Model Type: ' + esc(m.type) + '</span>' +
@@ -512,16 +634,16 @@
           '<button data-act="md-template">' + I.excel + 'Download Template</button></div>' +
       '</div>' +
       '<div class="grid-scroll md-scroll"><table class="grid md-grid" id="md-table"></table></div>' +
-      '<div id="md-foot" style="overflow:hidden"></div>' +
-      '<div class="md-buttons"><button class="btn btn-text" data-act="md-clear" data-acc="' + esc(m.access) + '">Clear</button><button class="btn btn-tan" data-act="md-submit" data-acc="' + esc(m.access) + '">Submit</button><button class="btn btn-black" data-act="md-confirm" data-acc="' + esc(m.access) + '">Confirm</button></div>';
+      '<div id="md-foot" class="md-foot"></div>' +
+      '<div class="md-buttons"><button class="btn btn-text" data-act="md-clear" data-acc="' + esc(m.access) + '">Clear</button><button class="btn btn-tan" id="md-submit" data-act="md-submit" data-acc="' + esc(m.access) + '">Submit</button><button class="btn btn-black" id="md-confirm" data-act="md-confirm" data-acc="' + esc(m.access) + '">Confirm</button></div>';
     renderMdTable(m);
     bindMdTable(m);
     $('#md-add').addEventListener('keydown', function (e) { if (e.key === 'Enter') addSecurities(m); });
   }
   function mdSorted(m, d) {
     var s = S.detailSort[m.access] || { key: 'ticker', dir: 1 };
-    var cash = d.rows.filter(function (r) { return r.ticker === 'USD Cash'; });
-    var rest = d.rows.filter(function (r) { return r.ticker !== 'USD Cash'; });
+    var cash = [], rest = [];
+    d.rows.forEach(function (r) { (r.ticker === CASH ? cash : rest).push(r); });
     rest.sort(function (a, b) {
       var sa = secFor(a.ticker), sb = secFor(b.ticker), va, vb;
       switch (s.key) {
@@ -540,62 +662,92 @@
   }
   function chgHtml(r) {
     var v = round3((+r.nw || 0) - r.weight);
-    var cls = v > 0.0004 ? 'pos' : v < -0.0004 ? 'neg' : '';
-    return '<span class="' + cls + '">' + (v > 0.0004 ? '+' : '') + v.toFixed(3) + '%</span>';
+    if (v > EPS) return '<span class="pos">+' + v.toFixed(3) + '% <i class="arr">&#9650;</i></span>';
+    if (v < -EPS) return '<span class="neg">' + v.toFixed(3) + '% <i class="arr">&#9660;</i></span>';
+    return '<span>0.000%</span>';
+  }
+  var EOD_TIP = 'Last end-of-day price as of ' + fmt.day(EOD) + ' close';
+  function mdRowHtml(r) {
+    var sec = secFor(r.ticker) || { desc: '', id: '', price: 0 };
+    var isCash = r.ticker === CASH, t = esc(r.ticker);
+    return '<tr class="' + (r.added ? 'added' : '') + '" data-row="' + t + '">' +
+      '<td>' + t + '</td>' +
+      '<td data-tip="' + esc(sec.desc) + '" data-tip-trunc>' + esc(sec.desc) + '</td>' +
+      '<td>' + esc(sec.id) + '</td>' +
+      '<td class="r">$' + num(sec.price, 2) + (sec.info ? '<span class="ii pi" data-tip="' + EOD_TIP + '" data-tip-anchor>' + I.info + '</span>' : '<span class="pi-sp"></span>') + '</td>' +
+      '<td class="r">' + r.weight.toFixed(3) + '%</td>' +
+      '<td class="r"><input class="nw' + (badWeight(r.nw) ? ' bad' : '') + '" data-t="' + t + '" value="' + (isNaN(+r.nw) ? esc(r.nw) : (+r.nw).toFixed(3)) + '" inputmode="decimal" autocomplete="off"></td>' +
+      '<td class="r" data-chg>' + chgHtml(r) + '</td>' +
+      '<td>' + (isCash ? '' : '<select data-tt="' + t + '">' + TT_OPTS[r.tt] + '</select>') + '</td>' +
+      '<td>' + (isCash ? '' : '<input type="checkbox" class="cbx" data-dnb="' + t + '"' + (r.dnb ? ' checked' : '') + '>') + '</td>' +
+      '<td>' + (isCash ? '' : '<input type="checkbox" class="cbx" data-dns="' + t + '"' + (r.dns ? ' checked' : '') + '>') + '</td>' +
+      '<td>' + (isCash ? '' : '<input class="notes" data-notes="' + t + '" placeholder="Add notes..." value="' + esc(r.notes) + '" autocomplete="off">') + '</td>' +
+      '<td class="c">' + (isCash ? '' : '<button class="del" data-act="md-delete" data-t="' + t + '" data-acc="' + '">Delete</button>') + '</td>' +
+    '</tr>';
   }
   function renderMdTable(m) {
-    var d = getDraft(m), o = mdSorted(m, d), total = draftTotal(d);
-    var head = '<colgroup>' + MD_COLS.map(function (c) { return '<col style="width:' + c.w + 'px">'; }).join('') + '</colgroup><thead><tr>' +
-      MD_COLS.map(function (c) {
-        var s = c.key && o.sort.key === c.key ? '<span class="sort">' + (o.sort.dir > 0 ? '&#9650;' : '&#9660;') + '</span>' : '';
-        return '<th class="' + (c.r ? 'r' : '') + '"' + (c.key ? ' data-act="md-sort" data-key="' + c.key + '" data-acc="' + esc(m.access) + '"' : ' style="cursor:default"') + '>' + c.label + s + '</th>';
-      }).join('') + '</tr></thead>';
-    var body = o.rows.map(function (r) {
-      var sec = secFor(r.ticker) || { desc: '', id: '', price: 0 };
-      var isCash = r.ticker === 'USD Cash', t = esc(r.ticker);
-      return '<tr class="' + (r.added ? 'added' : '') + '">' +
-        '<td>' + t + '</td>' +
-        '<td data-tip="' + esc(sec.desc) + '" data-tip-trunc>' + esc(sec.desc) + '</td>' +
-        '<td>' + esc(sec.id) + '</td>' +
-        '<td class="r">$' + num(sec.price, 2) + (sec.info ? ' <span class="ii" data-tip="Price as of prior market close ' + fmt.day(prevBusinessDay(todayISO())) + '" style="display:inline-block;vertical-align:-1px">' + I.info + '</span>' : '<span style="display:inline-block;width:15px"></span>') + '</td>' +
-        '<td class="r">' + r.weight.toFixed(3) + '%</td>' +
-        '<td class="r"><input class="nw" data-t="' + t + '" value="' + (+r.nw).toFixed(3) + '" inputmode="decimal"></td>' +
-        '<td class="r" data-chg="' + t + '">' + chgHtml(r) + '</td>' +
-        '<td>' + (isCash ? '' : '<select data-tt="' + t + '">' + SEED.tradeTypes.map(function (x) { return '<option' + (x === r.tt ? ' selected' : '') + '>' + x + '</option>'; }).join('') + '</select>') + '</td>' +
-        '<td>' + (isCash ? '' : '<input type="checkbox" class="cbx" data-dnb="' + t + '"' + (r.dnb ? ' checked' : '') + '>') + '</td>' +
-        '<td>' + (isCash ? '' : '<input type="checkbox" class="cbx" data-dns="' + t + '"' + (r.dns ? ' checked' : '') + '>') + '</td>' +
-        '<td>' + (isCash ? '' : '<input class="notes" data-notes="' + t + '" placeholder="Add notes..." value="' + esc(r.notes) + '">') + '</td>' +
-        '<td>' + (r.added ? '<button class="rm" data-act="md-remove" data-t="' + t + '" data-acc="' + esc(m.access) + '" aria-label="Remove">&times;</button>' : '') + '</td>' +
-      '</tr>';
-    }).join('');
-    $('#md-table').innerHTML = head + '<tbody>' + body + '</tbody>';
-    var cg = '<colgroup>' + MD_COLS.map(function (c) { return '<col style="width:' + c.w + 'px">'; }).join('') + '</colgroup>';
-    $('#md-foot').innerHTML = '<table class="grid md-grid">' + cg + '<tr><td colspan="5" style="background:transparent;border:0"></td><td class="r" style="background:transparent;border:0;font-weight:700"><span id="md-total" class="' + (Math.abs(total - 100) > 0.0004 ? 'neg' : '') + '">Total: ' + total.toFixed(3) + '%</span></td><td colspan="6" style="background:transparent;border:0"></td></tr></table>';
-    $('#md-foot').scrollLeft = $('.md-scroll').scrollLeft;
+    var d = getDraft(m), o = mdSorted(m, d);
+    var head = '<thead><tr>' + MD_COLS.map(function (c) {
+      var s = c.key && o.sort.key === c.key ? '<span class="sort">' + (o.sort.dir > 0 ? '&#9650;' : '&#9660;') + '</span>' : '';
+      return '<th class="' + (c.r ? 'r' : '') + '"' + (c.key ? ' data-act="md-sort" data-key="' + c.key + '" data-acc="' + esc(m.access) + '"' : ' style="cursor:default"') + '>' + c.label + s + '</th>';
+    }).join('') + '</tr></thead>';
+    $('#md-table').innerHTML = MD_COLGROUP + head + '<tbody>' + o.rows.map(mdRowHtml).join('') + '</tbody>';
+    $('#md-foot').innerHTML = '<table class="grid md-grid">' + MD_COLGROUP + '<tr><td colspan="5"></td><td class="r"><span id="md-total"></span></td><td colspan="6"></td></tr></table>';
+    var sc = $('.md-scroll'); $('#md-foot').scrollLeft = sc.scrollLeft;
+    updateTotals(m);
+  }
+  /* Recompute total + button states. O(rows); runs on every keystroke. */
+  function updateTotals(m) {
+    var d = getDraft(m), total = draftTotal(d), off = Math.abs(total - 100) > EPS;
+    var te = $('#md-total');
+    if (te) { te.textContent = 'Total: ' + total.toFixed(3) + '%'; te.className = off ? 'neg' : ''; te.setAttribute('data-tip', off ? 'Weights must total 100.000% (' + (total > 100 ? 'over by ' : 'short by ') + Math.abs(round3(total - 100)).toFixed(3) + '%)' : ''); te.toggleAttribute('data-tip-anchor', off); }
+    var df = diff(m, d), invalid = d.rows.some(function (r) { return badWeight(r.nw); });
+    var subWhy = invalid ? 'Each new weight must be a number between 0 and 100' :
+      off ? 'Weights must total 100.000% to submit. Current total: ' + total.toFixed(3) + '%' :
+      !df.dirty ? 'No changes to submit' : '';
+    var confWhy = df.dirty ? 'Confirm is available only when the model has no changes. Submit or clear your changes first.' : '';
+    setBtn($('#md-submit'), subWhy);
+    setBtn($('#md-confirm'), confWhy);
+  }
+  function setBtn(b, why) {
+    if (!b) return;
+    b.classList.toggle('is-disabled', !!why);
+    b.setAttribute('aria-disabled', why ? 'true' : 'false');
+    if (why) { b.setAttribute('data-tip', why); b.setAttribute('data-tip-anchor', ''); }
+    else { b.removeAttribute('data-tip'); b.removeAttribute('data-tip-anchor'); }
+    if (tipFor === b) hideTip();
   }
   function bindMdTable(m) {
-    var tbl = $('#md-table');
-    $('.md-scroll').addEventListener('scroll', function (e) { $('#md-foot').scrollLeft = e.target.scrollLeft; });
+    var tbl = $('#md-table'), sc = $('.md-scroll'), foot = $('#md-foot');
+    sc.addEventListener('scroll', function () { foot.scrollLeft = sc.scrollLeft; }, { passive: true });
     tbl.addEventListener('input', function (e) {
-      var el = e.target, d2 = getDraft(m), t;
-      if ((t = el.getAttribute('data-t')) && el.classList.contains('nw')) {
-        var row = rowOf(d2, t); row.nw = el.value === '' || isNaN(+el.value) ? 0 : +el.value;
-        el.classList.toggle('bad', el.value !== '' && (isNaN(+el.value) || +el.value < 0));
-        var cell = tbl.querySelector('[data-chg="' + cssEsc(t) + '"]'); if (cell) cell.innerHTML = chgHtml(row);
-        var tot = draftTotal(d2), te = $('#md-total');
-        te.textContent = 'Total: ' + tot.toFixed(3) + '%'; te.className = Math.abs(tot - 100) > 0.0004 ? 'neg' : '';
-      } else if ((t = el.getAttribute('data-notes'))) rowOf(d2, t).notes = el.value;
+      var el = e.target, d = getDraft(m), t;
+      if (el.classList.contains('nw')) {
+        var row = rowOf(d, el.getAttribute('data-t'));
+        row.nw = el.value.trim() === '' ? '' : (isNaN(+el.value) ? el.value : +el.value);
+        el.classList.toggle('bad', badWeight(row.nw));
+        el.closest('tr').querySelector('[data-chg]').innerHTML = chgHtml(row);
+        touch(m); updateTotals(m);
+      } else if ((t = el.getAttribute('data-notes'))) { rowOf(d, t).notes = el.value; touch(m); updateTotals(m); }
     });
     tbl.addEventListener('change', function (e) {
-      var el = e.target, d2 = getDraft(m), t;
-      if ((t = el.getAttribute('data-tt'))) rowOf(d2, t).tt = el.value;
-      else if ((t = el.getAttribute('data-dnb'))) rowOf(d2, t).dnb = el.checked;
-      else if ((t = el.getAttribute('data-dns'))) rowOf(d2, t).dns = el.checked;
-      else if (el.classList.contains('nw')) { var r = rowOf(d2, el.getAttribute('data-t')); if (!isNaN(+el.value) && el.value !== '') el.value = (+el.value).toFixed(3); r.nw = +el.value || 0; }
+      var el = e.target, d = getDraft(m), t;
+      if ((t = el.getAttribute('data-tt'))) rowOf(d, t).tt = el.value;
+      else if ((t = el.getAttribute('data-dnb'))) rowOf(d, t).dnb = el.checked;
+      else if ((t = el.getAttribute('data-dns'))) rowOf(d, t).dns = el.checked;
+      else if (el.classList.contains('nw')) { if (!badWeight(el.value)) el.value = (+el.value).toFixed(3); return; }
+      else return;
+      touch(m); updateTotals(m);
     });
+    tbl.addEventListener('keydown', function (e) {
+      // Enter / arrow keys move between New Weight cells, like a spreadsheet
+      if (!e.target.classList.contains('nw') || ['Enter', 'ArrowDown', 'ArrowUp'].indexOf(e.key) < 0) return;
+      var all = $$('input.nw', tbl), i = all.indexOf(e.target), j = e.key === 'ArrowUp' ? i - 1 : i + 1;
+      if (all[j]) { e.preventDefault(); all[j].focus(); all[j].select(); }
+    });
+    tbl.addEventListener('focusin', function (e) { if (e.target.classList.contains('nw')) e.target.select(); });
   }
-  function cssEsc(s) { return window.CSS && CSS.escape ? CSS.escape(s) : s.replace(/"/g, '\\"'); }
-  function rowOf(d, t) { return d.rows.filter(function (r) { return r.ticker === t; })[0]; }
+
   function resolveSecurity(token) {
     var t = token.trim().toUpperCase();
     if (!t) return null;
@@ -603,68 +755,87 @@
     if (SEED.securitiesById[t]) return SEED.securitiesById[t];
     return null;
   }
+  function addError(m, tok, msg) {
+    logEvent(m, { ts: nowStamp(), event: 'Error When Adding Security', user: persona.user, details: 'Ticker/CUSIP = ' + tok + '\nERROR: ' + msg });
+    return tok + ': ' + msg;
+  }
   function addSecurities(m) {
     var input = $('#md-add'), tokens = input.value.split(/[,\s]+/).filter(Boolean);
     if (!tokens.length) { toast('Please enter a Ticker, CUSIP, CINS or SEDOL'); return; }
-    var d = getDraft(m), added = [], bad = [], dup = [];
-    var isUcits = m.kind === 'ucits';
-    tokens.forEach(function (tok) {
-      var t = resolveSecurity(tok);
-      if (!t) { bad.push(tok); return; }
-      if (isUcits && !/^[A-Z]\d/.test(tok.toUpperCase()) && SEC[t].ucits) { bad.push(tok + ' (use CINS)'); return; }
-      if (rowOf(d, t)) { dup.push(t); return; }
-      d.rows.push({ ticker: t, weight: 0, nw: 0, tt: '-', dnb: false, dns: false, notes: '', added: true });
+    var d = getDraft(m), added = [], errs = [];
+    tokens.forEach(function (raw) {
+      var tok = raw.toUpperCase(), t = resolveSecurity(tok);
+      if (!t) { errs.push(addError(m, tok, 'Invalid security. Not added to model.')); return; }
+      var s = SEC[t];
+      if (s.error) { errs.push(addError(m, tok, s.error)); return; }
+      if (s.group === 'afunds' && m.kind !== 'afunds') { errs.push(addError(m, tok, 'Mutual fund not eligible for program. Not added to model.')); return; }
+      if (m.kind === 'ucits' && t === tok && s.ucits) { errs.push(addError(m, tok, 'UCITS securities must be added by CINS. Not added to model.')); return; }
+      if (rowOf(d, t)) { errs.push(addError(m, tok, 'Duplicate security. Not added to model')); return; }
+      var r = newRow(t, 0); r.added = true; d.rows.push(r);
       added.push(t);
     });
-    if (bad.length) toast('Security not found: ' + bad.join(', '));
-    if (dup.length) toast('Already in model: ' + dup.join(', '));
-    if (added.length) { input.value = ''; renderMdTable(m); toast('Added ' + added.join(', ') + ' to model', 'ok'); }
+    errs.forEach(function (msg) { toast(msg); });
+    if (added.length) { input.value = ''; touch(m); renderMdTable(m); toast('Added ' + added.join(', ') + ' to model', 'ok'); var el = $('input.nw[data-t="' + added[added.length - 1] + '"]'); if (el) { el.scrollIntoView({ block: 'nearest' }); el.focus(); } }
+    else save();
+  }
+  /* DELETE (as in production): removes the row and moves its new weight into cash. */
+  function deleteRow(m, t) {
+    var d = getDraft(m), r = rowOf(d, t), cash = rowOf(d, CASH);
+    if (!r) return;
+    var w = badWeight(r.nw) ? 0 : +r.nw;
+    cash.nw = round3((+cash.nw || 0) + w);
+    d.rows = d.rows.filter(function (x) { return x !== r; });
+    touch(m); renderMdTable(m);
+    toast(t + ' deleted. ' + w.toFixed(3) + '% moved to USD Cash.', 'ok');
   }
 
-  function snapshotFromRows(rows) { return rows.filter(function (r) { return r.weight > 0 || r.ticker === 'USD Cash'; }).map(function (r) { return { ticker: r.ticker, weight: r.weight }; }); }
-
   function submitModel(m) {
-    var d = getDraft(m), total = draftTotal(d);
-    if (d.rows.some(function (r) { return isNaN(+r.nw) || +r.nw < 0; })) { toast('New weights must be zero or greater'); return; }
-    if (Math.abs(total - 100) > 0.0004) { toast('Model weights must total 100.000%. Current total is ' + total.toFixed(3) + '%'); return; }
-    if (!draftChanged(d)) { toast('No changes to submit'); return; }
-    var changes = d.rows.filter(function (r) { return Math.abs(r.nw - r.weight) > 0.0004; }).length;
-    m.pending = d.rows.map(function (r) { return { ticker: r.ticker, nw: round3(+r.nw), tt: r.tt, dnb: r.dnb, dns: r.dns, notes: r.notes }; });
-    m.status = 'In Progress';
-    m.modified = nowStamp(); m.modifiedUser = persona.user;
-    m.events.push({ ts: m.modified, event: 'Model Submitted', user: persona.user, details: changes + ' weight change(s) submitted' + (d.rows.some(function (r) { return r.added; }) ? '; new securities added' : '') });
+    var b = $('#md-submit');
+    if (b && b.classList.contains('is-disabled')) return;
+    if (isAdmin()) {
+      modal({
+        cls: 'reason', title: 'Reason For Update',
+        body: '<label class="lbl" for="reason">As an admin, provide a reason for this update. It is recorded in the audit trail.</label><textarea id="reason" rows="4" maxlength="250" autofocus></textarea>',
+        foot: '<button class="btn btn-text" data-act="close-modal">Cancel</button><button class="btn btn-tan" data-act="reason-submit" data-acc="' + esc(m.access) + '">Submit</button>'
+      });
+      $('#reason').addEventListener('keydown', function (e) { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) $('[data-act="reason-submit"]').click(); });
+    } else doSubmit(m, null);
+  }
+  function doSubmit(m, reason) {
+    var d = getDraft(m), df = diff(m, d), ts = nowStamp();
+    m.holdings = d.rows.filter(function (r) { return +r.nw > EPS || r.ticker === CASH; }).map(function (r) { return { ticker: r.ticker, weight: round3(+r.nw) }; });
+    m.holdings.sort(function (a, b) { return a.ticker === CASH ? -1 : b.ticker === CASH ? 1 : a.ticker < b.ticker ? -1 : 1; });
+    m.status = 'Approved'; m.modified = ts; m.modifiedUser = persona.user;
+    m.snapshots[todayISO()] = m.holdings.map(function (h) { return { ticker: h.ticker, weight: h.weight }; });
+    logEvent(m, { ts: ts, event: reason != null ? 'Model Updated By Admin' : 'Model Updated', user: persona.user, details: reason != null ? 'Admin reason for update: ' + reason : '-', changes: df.changes });
+    logEvent(m, { ts: ts, event: 'Model Approved', user: persona.user, details: '-', changes: df.changes });
+    delete m.draft;
     save(); route();
     toast('Model submitted successfully', 'ok');
   }
   function confirmModel(m) {
-    var d = getDraft(m), total = draftTotal(d);
-    if (Math.abs(total - 100) > 0.0004) { toast('Model weights must total 100.000%. Current total is ' + total.toFixed(3) + '%'); return; }
-    var changes = d.rows.filter(function (r) { return Math.abs(r.nw - r.weight) > 0.0004; }).length;
-    m.holdings = d.rows.filter(function (r) { return +r.nw > 0 || r.ticker === 'USD Cash'; }).map(function (r) { return { ticker: r.ticker, weight: round3(+r.nw) }; });
-    var cash = m.holdings.filter(function (h) { return h.ticker === 'USD Cash'; })[0];
-    if (!cash) m.holdings.unshift({ ticker: 'USD Cash', weight: 0 });
-    m.pending = null;
+    var b = $('#md-confirm');
+    if (b && b.classList.contains('is-disabled')) return;
+    discardDraft(m);
     var ts = nowStamp();
-    m.status = 'Approved';
-    m.modified = ts; m.modifiedUser = persona.user;
     m.confirmed = ts; m.confirmedUser = persona.user;
-    m.snapshots[todayISO()] = snapshotFromRows(m.holdings);
-    m.events.push({ ts: ts, event: 'Model Confirmed', user: persona.user, details: changes ? changes + ' weight change(s) applied' : 'Model confirmed with no changes' });
-    delete S.drafts[m.access];
+    if (m.status === 'In Progress') m.status = 'Approved';
+    m.snapshots[todayISO()] = m.holdings.map(function (h) { return { ticker: h.ticker, weight: h.weight }; });
+    logEvent(m, { ts: ts, event: 'Confirmed', user: persona.user, details: 'Model Confirmed' });
     save(); route();
     toast('Model confirmed successfully', 'ok');
   }
   function importCsv(m, text) {
     var rows = parseCsv(text);
     if (!rows.length) { toast('The selected file is empty'); return; }
-    if (isNaN(+rows[0][1])) rows.shift(); // header
+    if (isNaN(+rows[0][1])) rows.shift(); // header row
     var d = getDraft(m), seen = {}, bad = [];
     rows.forEach(function (r) {
       var tok = r[0], w = +r[1];
-      var t = /^usd ?cash$/i.test(tok) ? 'USD Cash' : resolveSecurity(tok);
-      if (!t || isNaN(w)) { bad.push(tok); return; }
+      var t = /^usd ?cash$/i.test(tok) ? CASH : resolveSecurity(tok);
+      if (!t || isNaN(w) || (SEC[t] && SEC[t].error)) { bad.push(tok); return; }
       var row = rowOf(d, t);
-      if (!row) { row = { ticker: t, weight: 0, nw: 0, tt: '-', dnb: false, dns: false, notes: '', added: true }; d.rows.push(row); }
+      if (!row) { row = newRow(t, 0); row.added = true; d.rows.push(row); }
       row.nw = round3(w);
       if (r[2] && SEED.tradeTypes.indexOf(r[2]) > -1) row.tt = r[2];
       if (r[3]) row.dnb = /^(y|yes|true|1)$/i.test(r[3]);
@@ -673,7 +844,7 @@
       seen[t] = 1;
     });
     d.rows.forEach(function (r) { if (!seen[r.ticker]) r.nw = 0; });
-    renderMdTable(m);
+    touch(m); renderMdTable(m);
     if (bad.length) toast('Skipped unrecognized rows: ' + bad.slice(0, 6).join(', ') + (bad.length > 6 ? '…' : ''));
     toast('Imported ' + Object.keys(seen).length + ' securities. Review and SUBMIT.', 'ok');
   }
@@ -684,44 +855,67 @@
     $('#tlh').addEventListener('keydown', function (e) { if (e.key === 'Enter') $('[data-act="tlh-submit"]').click(); });
   }
 
-  /* ---------- Model Snapshot ---------- */
+  /* ---------- Model Snapshot ----------
+   * Proposed UX (default): open on the latest saved snapshot, mark saved dates in the
+   * calendar, step between saved snapshots, and show any error inline next to the date.
+   * ?ux=current reproduces production: previous business day + red ribbon at the top.
+   */
+  var SNAP_COLS = '<colgroup><col style="width:13%"><col style="width:20%"><col style="width:15%"><col style="width:10%"><col style="width:12%"><col style="width:12%"><col style="width:12%"><col></colgroup>';
+  function snapDates(m) { return Object.keys(m.snapshots || {}).filter(function (d) { return d <= todayISO(); }).sort().reverse(); }
+  function snapNav(m, date) {
+    var list = snapDates(m), older = null, newer = null;
+    for (var i = 0; i < list.length; i++) { if (list[i] < date) { older = list[i]; break; } }
+    for (var j = list.length - 1; j >= 0; j--) { if (list[j] > date) { newer = list[j]; break; } }
+    return { list: list, older: older, newer: newer, latest: list[0] || null };
+  }
   function renderSnapshot(m, c) {
-    var date = S.snapDate[m.access] || prevBusinessDay(todayISO());
-    var snap = m.snapshots[date];
-    var cols = '<colgroup><col style="width:13%"><col style="width:20%"><col style="width:15%"><col style="width:10%"><col style="width:12%"><col style="width:12%"><col style="width:12%"><col></colgroup>';
-    var head = '<thead><tr><th>Ticker</th><th>Description</th><th>CUSIP</th><th class="r">Price ($)</th><th class="r">Weight</th><th class="r">Quantity</th><th class="r">Market Value (M)</th><th></th></tr></thead>';
+    var nav0 = snapNav(m, '9999');
+    var date = S.snapDate[m.access] || (UX_CURRENT ? EOD : nav0.latest || EOD);
+    var snap = m.snapshots[date], nav = snapNav(m, date);
     var body = '', totW = 0, totMv = 0;
     if (snap) {
-      snap = snap.slice().sort(function (a, b) { return a.ticker === 'USD Cash' ? -1 : b.ticker === 'USD Cash' ? 1 : a.ticker < b.ticker ? -1 : 1; });
+      snap = snap.slice().sort(function (a, b) { return a.ticker === CASH ? -1 : b.ticker === CASH ? 1 : a.ticker < b.ticker ? -1 : 1; });
       body = snap.map(function (r) {
-        var sec = secFor(r.ticker) || { desc: '', id: '', price: 0 };
-        var mv = m.aum * r.weight / 100, cash = r.ticker === 'USD Cash';
+        var sec = secFor(r.ticker) || { desc: '', id: '', price: 1 };
+        var mv = m.aum * r.weight / 100, cash = r.ticker === CASH;
         totW += r.weight; totMv += mv;
-        var qty = cash ? '-' : num(mv * 1e6 / sec.price, 2);
-        return '<tr><td>' + esc(r.ticker) + '</td><td>' + esc(sec.desc) + '</td><td>' + esc(sec.id) + '</td><td class="r">$' + num(sec.price, 2) + '</td><td class="r">' + r.weight.toFixed(3) + '%</td><td class="r">' + qty + '</td><td class="r">' + num(mv, 2) + '</td><td></td></tr>';
+        return '<tr><td>' + esc(r.ticker) + '</td><td>' + esc(sec.desc) + '</td><td>' + esc(sec.id) + '</td><td class="r">$' + num(sec.price, 2) + '</td><td class="r">' + r.weight.toFixed(3) + '%</td><td class="r">' + (cash ? '-' : num(mv * 1e6 / sec.price, 2)) + '</td><td class="r">' + num(mv, 2) + '</td><td></td></tr>';
       }).join('');
     }
-    c.innerHTML =
-      '<div class="snap-bar">Select Date: <div class="ctl cal" data-act="dp-snap" data-acc="' + esc(m.access) + '" data-dp-anchor><span class="txt">' + fmt.day(date) + '</span>' + I.cal + '</div></div>' +
-      '<div class="grid-scroll snap-scroll">' +
-        '<table class="grid snap-grid">' + cols + head + '<tbody>' + body + '</tbody></table>' +
-        (snap ? '' : '<div class="no-rows">No Rows To Show</div>') +
-      '</div>' +
-      '<table class="grid" style="table-layout:fixed;width:100%"><colgroup><col style="width:13%"><col style="width:20%"><col style="width:15%"><col style="width:10%"><col style="width:12%"><col style="width:12%"><col style="width:12%"><col></colgroup><tr class="snap-tot"><td colspan="4" style="border-top:1px solid #555"></td><td class="r" style="border-top:1px solid #555;font-weight:700">Total: ' + totW.toFixed(3) + '%</td><td style="border-top:1px solid #555"></td><td class="r" style="border-top:1px solid #555;font-weight:700">Total: ' + num(totMv, 2) + '</td><td style="border-top:1px solid #555"></td></tr></table>';
-    if (!snap) toast('Model snapshot not saved for selected date');
+    var cellB = ' style="border-top:1px solid #555;font-weight:700"';
+    var A = ' data-acc="' + esc(m.access) + '"', bar;
+    if (UX_CURRENT) {
+      bar = '<div class="snap-bar">Select Date: <div class="ctl cal" data-act="dp-snap"' + A + ' data-dp-anchor><span class="txt">' + fmt.day(date) + '</span>' + I.cal + '</div></div>';
+    } else {
+      var msg = snap
+        ? '<div class="snap-info">Showing snapshot saved ' + fmt.day(date) + (date === nav.latest ? ' (latest)' : '') + ' &middot; ' + nav.list.length + ' saved</div>'
+        : '<div class="snap-alert" role="alert">' + I.errBang + '<span>' + (nav.list.length ? 'No snapshot saved for ' + fmt.day(date) + '.' : 'No snapshots have been saved for this model yet.') + '</span>' +
+            (nav.latest ? '<button data-act="snap-go" data-date="' + nav.latest + '"' + A + '>View latest (' + fmt.day(nav.latest) + ')</button>' : '') + '</div>';
+      bar = '<div class="snap-bar">' + msg + '<span class="snap-lbl">Select Date:</span>' +
+        '<button class="snap-step' + (nav.older ? '' : ' is-disabled') + '" data-act="snap-go"' + A + (nav.older ? ' data-date="' + nav.older + '" data-tip="Previous snapshot: ' + fmt.day(nav.older) + '"' : ' data-tip="No older snapshot"') + ' data-tip-anchor aria-label="Previous snapshot">' + I.prev + '</button>' +
+        '<div class="ctl cal' + (snap ? '' : ' err') + '" data-act="dp-snap"' + A + ' data-dp-anchor><span class="txt">' + fmt.day(date) + '</span>' + I.cal + '</div>' +
+        '<button class="snap-step' + (nav.newer ? '' : ' is-disabled') + '" data-act="snap-go"' + A + (nav.newer ? ' data-date="' + nav.newer + '" data-tip="Next snapshot: ' + fmt.day(nav.newer) + '"' : ' data-tip="No newer snapshot"') + ' data-tip-anchor aria-label="Next snapshot">' + I.next + '</button></div>';
+    }
+    c.innerHTML = bar +
+      '<div class="grid-scroll snap-scroll"><table class="grid snap-grid">' + SNAP_COLS + '<thead><tr><th>Ticker</th><th>Description</th><th>CUSIP</th><th class="r">Price ($)</th><th class="r">Weight</th><th class="r">Quantity</th><th class="r">Market Value (M)</th><th></th></tr></thead><tbody>' + body + '</tbody></table>' +
+        (snap ? '' : '<div class="no-rows">No Rows To Show</div>') + '</div>' +
+      '<table class="grid snap-total">' + SNAP_COLS + '<tr><td colspan="4"' + cellB + '></td><td class="r"' + cellB + '>Total: ' + round3(totW).toFixed(3) + '%</td><td' + cellB + '></td><td class="r"' + cellB + '>Total: ' + num(totMv, 2) + '</td><td' + cellB + '></td></tr></table>';
+    if (!snap && UX_CURRENT) showRibbon('Model snapshot not saved for selected date');
   }
+  var ribbon = $('#ribbon');
+  function showRibbon(msg) { ribbon.innerHTML = I.errBang + '<span>' + esc(msg) + '</span>'; ribbon.hidden = false; }
 
   /* ---------- Communication ---------- */
   function renderToday(m, c) {
     var today = todayISO();
-    var ev = m.events.filter(function (e) { return e.ts.slice(0, 10) === today; }).sort(function (a, b) { return a.ts < b.ts ? 1 : -1; });
-    c.innerHTML = '<div class="comm-list"><table class="grid comm-grid"><colgroup><col style="width:34%"><col style="width:28%"><col style="width:24%"><col></colgroup><thead><tr><th style="cursor:default">Timestamp</th><th style="cursor:default">Event</th><th style="cursor:default">User</th><th style="cursor:default">Details</th></tr></thead><tbody>' +
-      ev.map(function (e) { return '<tr><td>' + fmt.event(e.ts) + '</td><td>' + esc(e.event) + '</td><td>' + esc(e.user) + '</td><td data-tip="' + esc(e.details) + '" data-tip-trunc>' + esc(e.details) + '</td></tr>'; }).join('') +
+    var ev = eventsDesc(m).filter(function (e) { return e.ts.slice(0, 10) === today; });
+    c.innerHTML = '<div class="comm-list"><table class="grid comm-grid"><colgroup><col style="width:30%"><col style="width:24%"><col style="width:20%"><col></colgroup><thead><tr><th>Timestamp</th><th>Event</th><th>User</th><th>Details</th></tr></thead><tbody>' +
+      ev.map(function (e) { return '<tr><td>' + fmt.full(e.ts) + '</td><td>' + esc(e.event) + '</td><td>' + esc(e.user) + '</td><td class="det" data-tip="' + esc(e.details) + '" data-tip-trunc>' + esc(e.details) + '</td></tr>'; }).join('') +
       '</tbody></table></div>';
   }
   function renderSma(m, c) {
     c.innerHTML = '<div class="comm-box">' + (m.communications || []).map(function (x) {
-      return '<div class="comm-msg"><div class="h">' + fmt.event(x.ts) + ' &middot; ' + esc(x.user) + '</div>' + esc(x.text) + '</div>';
+      return '<div class="comm-msg"><div class="h">' + fmt.full(x.ts) + ' &middot; ' + esc(x.user) + '</div>' + esc(x.text) + '</div>';
     }).join('') + '</div>';
   }
 
@@ -732,11 +926,11 @@
   function showProfileReport(m) {
     var eq = 0, fi = 0, cash = 0;
     m.holdings.forEach(function (h) {
-      if (h.ticker === 'USD Cash') { cash += h.weight; return; }
-      var g = (SEC[h.ticker] || {}).group, desc = (SEC[h.ticker] || {}).desc || '';
-      if (/BOND|BD|TREAS|MUNI|INCOME|INC ETF|SHORT DURATION|T-BILL|GOVT|SECURITIES FD|CORP/.test(desc) && g !== 'growth' && g !== 'value') fi += h.weight; else eq += h.weight;
+      if (h.ticker === CASH) { cash += h.weight; return; }
+      var s = SEC[h.ticker] || {}, g = s.group, desc = s.desc || '';
+      if (g !== 'growth' && g !== 'value' && /BOND|BD|TREAS|MUNI|INCOME|SHORT DURATION|T-BILL|GOVT|SECURITIES FD|CORP/.test(desc)) fi += h.weight; else eq += h.weight;
     });
-    var top = m.holdings.filter(function (h) { return h.ticker !== 'USD Cash'; }).sort(function (a, b) { return b.weight - a.weight; }).slice(0, 10);
+    var top = m.holdings.filter(function (h) { return h.ticker !== CASH; }).sort(function (a, b) { return b.weight - a.weight; }).slice(0, 10);
     var body = '<div class="prof-sum">' +
       '<div><span class="k">Manager</span><span class="v">' + esc(m.manager) + '</span></div>' +
       '<div><span class="k">Holdings</span><span class="v">' + (m.holdings.length - 1) + '</span></div>' +
@@ -745,11 +939,11 @@
       '<div><span class="k">Equity</span><span class="v">' + eq.toFixed(1) + '%</span></div>' +
       '<div><span class="k">Fixed Income</span><span class="v">' + fi.toFixed(1) + '%</span></div>' +
       '<div><span class="k">Cash</span><span class="v">' + cash.toFixed(1) + '%</span></div>' +
-      '<div><span class="k">As of</span><span class="v">' + fmt.day(prevBusinessDay(todayISO())) + '</span></div></div>' +
+      '<div><span class="k">As of</span><span class="v">' + fmt.day(EOD) + '</span></div></div>' +
       '<table class="grid"><colgroup><col style="width:90px"><col><col style="width:90px"><col style="width:200px"></colgroup><thead><tr><th>Ticker</th><th>Top 10 Holdings</th><th class="r">Weight</th><th></th></tr></thead><tbody>' +
       top.map(function (h) { return '<tr><td>' + esc(h.ticker) + '</td><td>' + esc((SEC[h.ticker] || {}).desc) + '</td><td class="r">' + h.weight.toFixed(3) + '%</td><td><div class="bar"><i style="width:' + Math.min(100, h.weight / top[0].weight * 100) + '%"></i></div></td></tr>'; }).join('') +
       '</tbody></table>';
-    modal('Most Recent Profile', m.name + '  |  ' + m.access, body, '<button class="btn btn-tan" data-act="print">Print</button><button class="btn btn-dark" data-act="close-modal">Close</button>');
+    modal({ title: 'Most Recent Profile', sub: '<div class="sub">' + esc(m.name) + '  |  ' + esc(m.access) + '</div>', body: body, foot: '<button class="btn btn-tan" data-act="print">Print</button><button class="btn btn-dark" data-act="close-modal">Close</button>' });
   }
   function renderProfile(m, c) {
     c.innerHTML =
@@ -762,7 +956,7 @@
         '<div><span class="k">Communication Email(s)</span><span class="v">' + esc(m.emails) + '</span></div>' +
       '</div>' +
       '<div class="users-card"><div class="users-head"><h3>Users</h3><label class="search-box">' + I.search + '<input id="users-q" placeholder="Search" autocomplete="off"></label></div>' +
-      '<table class="grid users-grid"><colgroup><col style="width:40%"><col style="width:34%"><col></colgroup><thead><tr><th style="cursor:default">Name</th><th style="cursor:default">User Email</th><th style="cursor:default">Phone Number</th></tr></thead><tbody id="users-body"></tbody></table></div>';
+      '<table class="grid users-grid"><colgroup><col style="width:40%"><col style="width:34%"><col></colgroup><thead><tr><th>Name</th><th>User Email</th><th>Phone Number</th></tr></thead><tbody id="users-body"></tbody></table></div>';
     function draw(q) {
       q = (q || '').toLowerCase();
       var rows = m.users.filter(function (u) { return !q || u.join(' ').toLowerCase().indexOf(q) > -1; });
@@ -773,49 +967,45 @@
   }
 
   /* =====================================================================
-   * EVENTS (delegated)
+   * EVENTS (one delegated listener for the whole app)
    * ===================================================================== */
   document.addEventListener('click', function (e) {
-    var el = e.target.closest('[data-act]');
     var L = S.list;
-    // close dropdowns on outside click
-    if (S.ui.open && !e.target.closest('.f-mgr') && !e.target.closest('.f-status')) { S.ui.open = null; S.ui.mgrQuery = ''; if ($('#ml-filters')) renderFilters(); }
+    // locked model link -> production pop-up instead of navigating
+    var lk = e.target.closest('a[data-locked]');
+    if (lk) { e.preventDefault(); var lm = findModel(lk.getAttribute('data-locked')); if (lm && lockedBy(lm)) { showLocked(lm); return; } location.hash = lk.getAttribute('href'); return; }
+    var el = e.target.closest('[data-act]');
+    if (S.ui.open && !e.target.closest('[data-ms]')) { S.ui.open = null; S.ui.q = {}; if ($('#ml-filters')) renderFilters(); }
     if (!el) return;
     var act = el.getAttribute('data-act'), acc = el.getAttribute('data-acc');
-    var m = acc ? findModel(acc) : null;
+    var m = acc ? findModel(acc) : currentModel();
+    var key = el.getAttribute('data-key');
     switch (act) {
       case 'noop': break;
-      case 'dd-mgr': S.ui.open = S.ui.open === 'mgr' ? null : 'mgr'; S.ui.mgrQuery = ''; renderFilters(); break;
-      case 'dd-status': S.ui.open = S.ui.open === 'status' ? null : 'status'; renderFilters(); break;
-      case 'mgr-all':
-        L.pending.managers = L.pending.managers.length === managerOptions().length ? [] : managerOptions().slice();
-        S.ui.mgrQuery = ''; renderFilters(); break;
-      case 'mgr-opt': {
-        var v = el.getAttribute('data-val'), i = L.pending.managers.indexOf(v);
-        if (i > -1) L.pending.managers.splice(i, 1); else L.pending.managers.push(v);
-        S.ui.mgrQuery = ''; renderFilters(); break;
+      case 'ms-toggle': S.ui.open = S.ui.open === key ? null : key; S.ui.q = {}; renderFilters(); break;
+      case 'ms-all': {
+        var opts = MULTI[key].opts();
+        L.pending[key] = L.pending[key].length === opts.length ? [] : opts.slice();
+        refreshMulti(key); break;
       }
-      case 'st-opt': {
-        var sv = el.getAttribute('data-val'), si = L.pending.status.indexOf(sv);
-        if (si > -1) L.pending.status.splice(si, 1); else L.pending.status.push(sv);
-        renderFilters(); break;
+      case 'ms-opt': {
+        var v = el.getAttribute('data-val'), arr = L.pending[key], i = arr.indexOf(v);
+        if (i > -1) arr.splice(i, 1); else arr.push(v);
+        refreshMulti(key); break;
       }
       case 'dp-mod': openDatePicker(el, 'range', L.pending.mod, function (v) { L.pending.mod = v; renderFilters(); }); break;
       case 'dp-conf': openDatePicker(el, 'range', L.pending.conf, function (v) { L.pending.conf = v; renderFilters(); }); break;
       case 'f-clear':
-        L.pending = { managers: [], mod: null, conf: null, status: [] };
-        L.applied = { managers: [], mod: null, conf: null, status: [] };
+        L.pending = emptyFilters(); L.applied = emptyFilters();
         L.page = 1; S.ui.open = null; renderFilters(); renderListGrid(); break;
       case 'f-apply':
         L.applied = JSON.parse(JSON.stringify(L.pending));
         L.page = 1; S.ui.open = null; renderFilters(); renderListGrid(); break;
       case 'f-toggle': L.collapsed = !L.collapsed; renderFilters(); break;
-      case 'list-sort': {
-        var k = el.getAttribute('data-key');
-        if (L.sort.key === k) { if (L.sort.dir === 1) L.sort.dir = -1; else L.sort = { key: null, dir: 1 }; }
-        else L.sort = { key: k, dir: 1 };
+      case 'list-sort':
+        if (L.sort.key === key) { if (L.sort.dir === 1) L.sort.dir = -1; else L.sort = { key: null, dir: 1 }; }
+        else L.sort = { key: key, dir: 1 };
         renderListGrid(); break;
-      }
       case 'pg': {
         var pages = Math.max(1, Math.ceil(listRows().length / L.perPage)), to = el.getAttribute('data-to');
         L.page = to === 'first' ? 1 : to === 'last' ? pages : to === 'prev' ? Math.max(1, L.page - 1) : Math.min(pages, L.page + 1);
@@ -823,6 +1013,11 @@
       }
       case 'pg-go': goPage(); break;
       case 'audit': if (m) showAudit(m); break;
+      case 'audit-exp': {
+        var x = $('[data-x="' + el.getAttribute('data-i') + '"]');
+        if (x) { x.hidden = !x.hidden; el.classList.toggle('open', !x.hidden); }
+        break;
+      }
       case 'close-modal': closeModal(); break;
       case 'print': window.print(); break;
       case 'list-export':
@@ -831,44 +1026,61 @@
         break;
       case 'model-export':
         if (m) downloadCsv(m.access + '_Model_' + todayISO() + '.csv', [['Ticker', 'Description', 'CUSIP', 'Price ($)', 'Weight', 'New Weight', 'Weight Change', 'Trade Type', 'Do Not Buy', 'Do Not Sell', 'Notes']].concat(
-          getDraft(m).rows.map(function (r) { var s = secFor(r.ticker) || {}; return [r.ticker, s.desc, s.id, (s.price || 0).toFixed(2), r.weight.toFixed(3), (+r.nw).toFixed(3), round3(r.nw - r.weight).toFixed(3), r.ticker === 'USD Cash' ? '' : r.tt, r.dnb ? 'Y' : 'N', r.dns ? 'Y' : 'N', r.notes]; })));
+          getDraft(m).rows.map(function (r) { var s = secFor(r.ticker) || {}; return [r.ticker, s.desc, s.id, (s.price || 0).toFixed(2), r.weight.toFixed(3), (+r.nw || 0).toFixed(3), round3((+r.nw || 0) - r.weight).toFixed(3), r.ticker === CASH ? '' : r.tt, r.dnb ? 'Y' : 'N', r.dns ? 'Y' : 'N', r.notes]; })));
         break;
       case 'md-sort': {
-        var cur = S.detailSort[acc] || { key: 'ticker', dir: 1 }, key = el.getAttribute('data-key');
+        var cur = S.detailSort[acc] || { key: 'ticker', dir: 1 };
         S.detailSort[acc] = cur.key === key ? { key: key, dir: -cur.dir } : { key: key, dir: 1 };
         renderMdTable(m); break;
       }
-      case 'md-add': addSecurities(currentModel()); break;
-      case 'md-remove': { var d = getDraft(m), t = el.getAttribute('data-t'); d.rows = d.rows.filter(function (r) { return r.ticker !== t; }); renderMdTable(m); break; }
+      case 'md-add': addSecurities(m); break;
+      case 'md-delete': deleteRow(m, el.getAttribute('data-t')); break;
       case 'md-trade-all': {
-        var cm = currentModel(), dd = getDraft(cm);
-        dd.rows.forEach(function (r) { if (r.ticker !== 'USD Cash') r.tt = 'Trade to Target'; });
-        renderMdTable(cm); toast('Trade Type set to Trade to Target for all securities', 'ok'); break;
+        var dd = getDraft(m);
+        dd.rows.forEach(function (r) { if (r.ticker !== CASH) r.tt = SEED.tradeToTarget; });
+        touch(m); renderMdTable(m); toast('Trade Type set to ' + SEED.tradeToTarget + ' for all securities', 'ok'); break;
       }
       case 'md-import': $('#import-file').value = ''; $('#import-file').click(); break;
-      case 'md-template': {
-        var tm = currentModel();
-        downloadCsv(tm.access + '_Import_Template.csv', [['Ticker/CUSIP/CINS/SEDOL', 'New Weight', 'Trade Type', 'Do Not Buy', 'Do Not Sell', 'Notes']].concat(
-          getDraft(tm).rows.map(function (r) { return [r.ticker, (+r.nw).toFixed(3), r.ticker === 'USD Cash' ? '' : r.tt, r.dnb ? 'Y' : 'N', r.dns ? 'Y' : 'N', r.notes]; })));
+      case 'md-template':
+        downloadCsv('MDP_Model_Import_Template.csv', [['Ticker/CUSIP/CINS/SEDOL', 'New Weight', 'Trade Type', 'Do Not Buy', 'Do Not Sell', 'Notes']]);
         break;
-      }
-      case 'md-clear': delete S.drafts[acc]; renderMdTable(m); break;
+      case 'md-clear': discardDraft(m); route(); break;
       case 'md-submit': submitModel(m); break;
       case 'md-confirm': confirmModel(m); break;
+      case 'reason-submit': {
+        var reason = $('#reason').value.trim();
+        if (!reason) { $('#reason').classList.add('bad'); $('#reason').focus(); toast('Please enter a reason for the update'); break; }
+        closeModal(); doSubmit(m, reason); break;
+      }
       case 'tlh-submit': {
         var inp = $('#tlh'), val = inp.value.trim().toUpperCase();
         if (!val) { toast('Please enter a replacement security'); break; }
         var rt = resolveSecurity(val);
-        if (!rt) { toast('Security not found: ' + val); break; }
+        if (!rt || SEC[rt].error) { toast('Invalid security: ' + val); break; }
         m.tlh = rt; inp.value = rt;
-        m.events.push({ ts: nowStamp(), event: 'Model Options Updated', user: persona.user, details: 'Tax Loss Harvest Replacement set to ' + rt });
+        logEvent(m, { ts: nowStamp(), event: 'Model Options Updated', user: persona.user, details: 'Tax Loss Harvest Replacement set to ' + rt });
         save(); toast('Tax Loss Harvest Replacement saved', 'ok'); break;
       }
-      case 'dp-snap':
-        openDatePicker(el, 'single', S.snapDate[acc] || prevBusinessDay(todayISO()), function (v) { if (v) { S.snapDate[acc] = v; route(); } });
+      case 'dp-snap': {
+        var cur0 = S.snapDate[acc] || (UX_CURRENT ? EOD : snapNav(m, '9999').latest || EOD);
+        openDatePicker(el, 'single', cur0, function (v) { if (v) { S.snapDate[acc] = v; route(); } },
+          UX_CURRENT ? null : { avail: snapDates(m) });
         break;
+      }
+      case 'snap-go': {
+        var dt = el.getAttribute('data-date');
+        if (dt) { S.snapDate[acc] = dt; route(); }
+        break;
+      }
       case 'perf-profile': if (m) showProfileReport(m); break;
     }
+  });
+  document.addEventListener('change', function (e) {
+    if (e.target.id === 'ml-pp') { S.list.perPage = +e.target.value; S.list.page = 1; renderListGrid(); }
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.target.id === 'ml-goto' && e.key === 'Enter') goPage();
+    if (e.key === 'Escape') { closeModal(); closeDatePicker(); if (S.ui.open) { S.ui.open = null; if ($('#ml-filters')) renderFilters(); } }
   });
   $('#import-file').addEventListener('change', function (e) {
     var f = e.target.files[0], m = currentModel();
@@ -877,17 +1089,16 @@
     rd.onload = function () { importCsv(m, String(rd.result)); };
     rd.readAsText(f);
   });
-  document.addEventListener('keydown', function (e) {
-    if (e.key === 'Escape') { closeModal(); closeDatePicker(); if (S.ui.open) { S.ui.open = null; if ($('#ml-filters')) renderFilters(); } }
-  });
 
   /* ================= router ================= */
-  var current = { access: null };
+  var current = { access: null }, skipRoute = false;
   function currentModel() { return current.access ? findModel(current.access) : null; }
   function route() {
-    closeDatePicker(); closeModal(); tip.style.display = 'none';
-    if (!route.keepToasts) $('#toast-zone').innerHTML = '';
-    route.keepToasts = false;
+    closeDatePicker(); closeModal(); hideTip();
+    toastZone.innerHTML = '';
+    ribbon.hidden = true;
+    // drop untouched drafts so stale weights never leak between visits
+    S.models.forEach(function (m) { if (m.draft && !m.draft.live) delete m.draft; });
     var h = location.hash.replace(/^#\/?/, '').split('/');
     if (h[0] === 'model' && h[1]) {
       current.access = decodeURIComponent(h[1]);
@@ -898,6 +1109,9 @@
     }
     document.title = current.access ? 'Model Delivery Portal - ' + current.access : 'Model Delivery Portal - Money Manager';
   }
-  window.addEventListener('hashchange', function () { route(); window.scrollTo(0, 0); });
+  window.addEventListener('hashchange', function () {
+    if (skipRoute) { skipRoute = false; return; }
+    route(); window.scrollTo(0, 0);
+  });
   route();
 })();
