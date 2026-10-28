@@ -6,8 +6,7 @@
  * ticker / CUSIP / CINS / SEDOL / company name, and a live preview shows exactly what
  * will change before anything touches the model.
  *
- *   Single model (from Model Details): Apply to Model -> fills the grid, Undo available.
- *   Bulk (from Model List): sheet with an Access column -> Submit all, or Apply as drafts.
+ *   Opened from Model Details: Apply to Model fills the grid (Undo available); the user then reviews and Submits.
  */
 (function () {
   'use strict';
@@ -20,15 +19,13 @@
   /* ---------------- indexes (built once) ---------------- */
   var TICKERS = Object.keys(SEC);
   var NAMES = TICKERS.map(function (t) { return { t: t, words: SEC[t].desc.toUpperCase().split(/[^A-Z0-9&]+/).filter(Boolean) }; });
-  function accessIndex() { var o = {}; C.models().forEach(function (m) { o[m.access.toUpperCase()] = m; }); return o; }
 
   var ROLES = [
     ['id', 'Security / CUSIP'], ['id2', 'Security / CUSIP (backup)'], ['weight', 'Weight'],
-    ['tt', 'TradeType'], ['dnb', 'DoNotBuy'], ['dns', 'DoNotSell'], ['notes', 'Notes'], ['access', 'Access (model)'], ['ignore', 'Ignore']
+    ['tt', 'TradeType'], ['dnb', 'DoNotBuy'], ['dns', 'DoNotSell'], ['notes', 'Notes'], ['ignore', 'Ignore']
   ];
   var ROLE_LABEL = {}; ROLES.forEach(function (r) { ROLE_LABEL[r[0]] = r[1]; });
   var HEADER_RULES = [
-    [/^(access|accessfoa|foa|model|modelcode|account)$/, 'access'],
     [/^(security|ticker|symbol|identifier|securityid|sedol)/, 'id'],
     [/^(cusip|cins|isin)/, 'id'],
     [/^(newweight|targetweight|target|weight|wt|allocation|alloc|%|pct|percent)/, 'weight'],
@@ -144,12 +141,11 @@
   }
 
   /* ---------------- column detection ---------------- */
-  function detect(grid, bulk) {
-    var acc = accessIndex();
+  function detect(grid) {
     var w = grid[0] ? grid[0].length : 0, roles = [], header = false;
     var r0 = grid[0] || [];
     var headerHit = r0.some(function (h) { var n = normHeader(h); return n && HEADER_RULES.some(function (r) { return r[0].test(n); }); });
-    var r0Plain = r0.every(function (v) { return v === '' || isNaN(cleanNum(v).n); }) && !r0.some(function (v) { return v !== '' && (C.resolveSecurity(String(v)) || acc[String(v).toUpperCase()]); });
+    var r0Plain = r0.every(function (v) { return v === '' || isNaN(cleanNum(v).n); }) && !r0.some(function (v) { return v !== '' && C.resolveSecurity(String(v)); });
     header = headerHit || (r0Plain && grid.length > 1 && grid[1].some(function (v) { return !isNaN(cleanNum(v).n); }));
     var data = header ? grid.slice(1) : grid, sample = data.slice(0, 300);
     for (var j = 0; j < w; j++) {
@@ -158,12 +154,10 @@
       if (!role) {
         var vals = sample.map(function (r) { return r[j]; }).filter(function (v) { return String(v).trim() !== ''; });
         var nv = vals.length || 1;
-        var accS = vals.filter(function (v) { return acc[String(v).toUpperCase()]; }).length / nv;
         var idS = vals.filter(function (v) { return isCashToken(v) || C.resolveSecurity(String(v)) || nameMatches(String(v)).length === 1; }).length / nv;
         var numS = vals.filter(function (v) { return !isNaN(cleanNum(v).n); }).length / nv;
         var ttS = vals.filter(function (v) { return TRADE.indexOf(String(v)) > 0; }).length / nv;
-        if (accS >= 0.6) role = 'access';
-        else if (idS >= 0.5) role = 'id';
+        if (idS >= 0.5) role = 'id';
         else if (numS >= 0.8) role = 'num';
         else if (ttS >= 0.5) role = 'tt';
         else if (vals.length && vals.every(function (v) { return /^[a-z]{2,}/i.test(String(v)) && !C.resolveSecurity(String(v)); })) role = (idS > 0.2 ? 'id' : 'ignore');
@@ -180,14 +174,13 @@
       var best = nums[0], bestScore = 1e9;
       nums.forEach(function (j) {
         var s = data.reduce(function (a, r) { var c = cleanNum(r[j]); return a + (isNaN(c.n) ? 0 : c.n); }, 0);
-        var groups = bulk && roles.indexOf('access') > -1 ? Math.max(1, new Set(data.map(function (r) { return String(r[roles.indexOf('access')]).toUpperCase(); })).size) : 1;
-        var per = s / groups, score = Math.min(Math.abs(per - 100), Math.abs(per - 1) * 100);
+        var score = Math.min(Math.abs(s - 100), Math.abs(s - 1) * 100);
         if (score < bestScore) { bestScore = score; best = j; }
       });
       roles[best] = 'weight';
     }
     roles = roles.map(function (r) { return r === 'num' ? 'ignore' : r; });
-    ['weight', 'access', 'tt', 'dnb', 'dns', 'notes'].forEach(function (role) {
+    ['weight', 'tt', 'dnb', 'dns', 'notes'].forEach(function (role) {
       var seen = false; roles = roles.map(function (r) { if (r !== role) return r; if (seen) return 'ignore'; seen = true; return r; });
     });
     return { header: header, roles: roles };
@@ -197,7 +190,7 @@
   var ST = null;
   function fresh(access) {
     var m = access ? C.findModel(access) : null;
-    return { bulk: !m, m: m, grid: null, header: false, roles: [], text: '', source: null, replace: null, filter: 'all', fix: {}, drop: {}, open: {}, editing: false };
+    return { m: m, grid: null, header: false, roles: [], text: '', source: null, replace: null, filter: 'all', fix: {}, drop: {}, editing: false };
   }
 
   /* ---------------- compute preview ---------------- */
@@ -210,34 +203,23 @@
   }
   function compute() {
     var R = ST.roles, col = function (role) { return R.indexOf(role); };
-    var cId = col('id'), cId2 = col('id2'), cW = col('weight'), cA = col('access');
+    var cId = col('id'), cId2 = col('id2'), cW = col('weight');
     var cTT = col('tt'), cB = col('dnb'), cS = col('dns'), cN = col('notes');
-    var data = ST.header ? ST.grid.slice(1) : ST.grid, acc = accessIndex();
+    var data = ST.header ? ST.grid.slice(1) : ST.grid;
     var out = { groups: [], missing: [], rows: data.length };
     if (cId < 0 && cId2 < 0) out.missing.push('Security / CUSIP');
     if (cW < 0) out.missing.push('Weight');
-    if (ST.bulk && cA < 0) out.missing.push('Access (model)');
     if (out.missing.length) return out;
-    var groups = {}, order = [];
+    var groups = { _: [] }, order = ['_'];
     data.forEach(function (r, i) {
-      var key = ST.bulk ? String(r[cA] || '').trim().toUpperCase() || '(blank)' : '_';
+      var key = '_';
       var gi = i + (ST.header ? 1 : 0);
       if (ST.drop[gi]) return;
-      if (!groups[key]) { groups[key] = []; order.push(key); }
       groups[key].push({ i: gi, r: r });
     });
     order.forEach(function (key) {
-      var m = ST.bulk ? acc[key] : ST.m, g = { key: key, m: m, rows: [], notes: [], problem: null, idx: groups[key].map(function (x) { return [x.i, String(x.r[cId] || (cId2 > -1 ? x.r[cId2] : '') || '').trim()]; }) };
+      var m = ST.m, g = { key: key, m: m, rows: [], notes: [], problem: null };
       out.groups.push(g);
-      if (!m) {
-        g.problem = key === '(blank)' ? 'Rows without an Access code' : 'Model ' + key + ' not found';
-        var toks = groups[key].map(function (x) { return String(x.r[cId] || (cId2 > -1 ? x.r[cId2] : '') || '').trim(); }).filter(Boolean);
-        g.notes.push(groups[key].length + ' row' + (groups[key].length === 1 ? '' : 's') + (toks.length ? ': ' + toks.slice(0, 8).join(', ') + (toks.length > 8 ? '…' : '') : '') + '. Correct the Access code in your sheet, or remove these rows from the import.');
-        g.counts = { changed: 0, new: 0, removed: 0, error: 0, same: 0 }; g.changes = 0; g.ready = false;
-        return;
-      }
-      var locked = C.lockedBy(m);
-      if (locked) g.problem = 'Being edited by ' + C.displayName(locked);
       var base = baseOf(m), seen = {}, pastedCash = null;
       // pass 1: resolve + raw values
       var vals = [];
@@ -358,23 +340,20 @@
     return r.kind === f;
   }
   function renderEmpty() {
-    var m = ST.m;
     return '<div class="imp-drop" id="imp-drop">' +
       '<div class="imp-drop-in">' + '<span class="imp-clip">' + I2.clip + '</span>' +
       '<div class="imp-big">Paste from Excel</div>' +
       '<div class="imp-keys"><kbd>Ctrl</kbd> + <kbd>V</kbd> anywhere in this panel</div>' +
       '<div class="imp-or">or drop an .xlsx / .csv file here &middot; <button data-imp="browse">browse files</button> &middot; <button data-imp="type">type it in</button></div>' +
       '</div>' +
-      '<textarea id="imp-text" class="imp-text" spellcheck="false" placeholder="' + (ST.bulk ? 'N529\tAAPL\t5%\nN524\tMSFT\t3.25%' : 'AAPL 5%\nMSFT 3.25\nApple 4') + '" aria-label="Paste or type model rows"' + (ST.editing ? '' : ' hidden') + '>' + esc(ST.text) + '</textarea>' +
+      '<textarea id="imp-text" class="imp-text" spellcheck="false" placeholder="' + 'AAPL 5%\nMSFT 3.25\nApple 4' + '" aria-label="Paste or type model rows"' + (ST.editing ? '' : ' hidden') + '>' + esc(ST.text) + '</textarea>' +
       '</div>' +
       '<div class="imp-needs"><div class="imp-sec-h">Columns needed</div><div class="imp-chips">' +
-        (ST.bulk ? '<span class="need req">Access <em>required</em></span>' : '') +
         '<span class="need req">Security or CUSIP <em>required</em></span><span class="need req">Weight <em>required</em></span>' +
         '<span class="need">TradeType</span><span class="need">DoNotBuy</span><span class="need">DoNotSell</span><span class="need">Notes</span></div>' +
         '<p>Headers are optional. Tickers, CUSIPs, CINS, SEDOLs and company names are recognized. Weights can be <b>10%</b>, <b>10</b> or <b>0.10</b>.</p></div>' +
-      '<div class="imp-tip"><div><b>No files needed.</b> ' + (ST.bulk ? 'Copy every model, edit in Excel, then paste the sheet back here to update them all at once.' : 'Copy this model, edit it in Excel, then paste it back here.') + '</div>' +
-        '<button class="btn imp-copy" data-imp="copy">' + I2.copy + (ST.bulk ? 'Copy All Models' : 'Copy Current Model') + '</button></div>' +
-      (m ? '' : '<div class="imp-hint">Updating a single model? Open it and paste there.</div>');
+      '<div class="imp-tip"><div><b>No files needed.</b> ' + 'Copy this model, edit it in Excel, then paste it back here.' + '</div>' +
+        '<button class="btn imp-copy" data-imp="copy">' + I2.copy + 'Copy Current Model</button></div>';
   }
   function renderData(res) {
     var src = ST.source, rowsN = (ST.header ? ST.grid.length - 1 : ST.grid.length), cols = ST.grid[0].length;
@@ -390,88 +369,59 @@
         var role = ST.roles[j], samp = sampleRows.map(function (r) { return r[j]; }).filter(function (v) { return String(v) !== ''; }).slice(0, 3).join(', ');
         return '<label class="imp-col' + (role === 'ignore' ? ' off' : '') + '"><span class="imp-col-h">' + esc(ST.header ? String(hd) || 'Column ' + (j + 1) : 'Column ' + String.fromCharCode(65 + j)) + '</span>' +
           '<span class="imp-col-s" title="' + esc(samp) + '">' + esc(samp || '—') + '</span>' +
-          '<select data-imp-role="' + j + '">' + ROLES.filter(function (r) { return ST.bulk || r[0] !== 'access'; }).map(function (r) { return '<option value="' + r[0] + '"' + (r[0] === role ? ' selected' : '') + '>' + r[1] + '</option>'; }).join('') + '</select></label>';
+          '<select data-imp-role="' + j + '">' + ROLES.map(function (r) { return '<option value="' + r[0] + '"' + (r[0] === role ? ' selected' : '') + '>' + r[1] + '</option>'; }).join('') + '</select></label>';
       }).join('') + '</div>';
     var need = [['Security / CUSIP', ST.roles.indexOf('id') > -1 || ST.roles.indexOf('id2') > -1], ['Weight', ST.roles.indexOf('weight') > -1]];
-    if (ST.bulk) need.unshift(['Access', ST.roles.indexOf('access') > -1]);
     h += '<div class="imp-needrow">' + need.map(function (n) { return '<span class="nd ' + (n[1] ? 'ok' : 'no') + '">' + (n[1] ? I2.check : I2.x) + esc(n[0]) + '</span>'; }).join('') + '</div></div>';
     if (res.missing.length) {
-      h += '<div class="imp-alert">' + C.I.errBang + '<span>Choose a column for <b>' + res.missing.join('</b> and <b>') + '</b> to see the preview.' + (ST.bulk && res.missing.indexOf('Access (model)') > -1 ? ' Bulk import needs an Access column so each row knows its model.' : '') + '</span></div>';
+      h += '<div class="imp-alert">' + C.I.errBang + '<span>Choose a column for <b>' + res.missing.join('</b> and <b>') + '</b> to see the preview.</span></div>';
       return h;
     }
     var G = res.groups, all = [];
     G.forEach(function (g) { all = all.concat(g.rows); });
     // mode
     var g0 = G[0] || {}, autoTxt;
-    var rep = ST.replace == null ? (ST.bulk ? null : g0.replace) : ST.replace;
-    if (!ST.bulk) {
-      var cv = g0.coverage || { covered: 0, of: 0, pasted: 0 };
-      autoTxt = ST.replace == null ? '<span class="sugg-tag">Suggested</span>' : '';
-      var expl = g0.replace ? 'Your paste covers ' + cv.covered + ' of ' + cv.of + ' current holdings. Securities not in your paste go to 0.000%' + (g0.counts && g0.counts.removed ? ' (' + g0.counts.removed + ' removed)' : '') + '.' :
-        'Only the ' + cv.pasted + ' securit' + (cv.pasted === 1 ? 'y' : 'ies') + ' you pasted change. Everything else keeps its current weight.';
-      h += '<div class="imp-mode"><div class="seg" role="radiogroup"><button role="radio" aria-checked="' + !!rep + '" class="' + (rep ? 'on' : '') + '" data-imp="mode" data-v="1">Replace model</button><button role="radio" aria-checked="' + !rep + '" class="' + (!rep ? 'on' : '') + '" data-imp="mode" data-v="0">Update listed only</button></div>' + autoTxt + '<span class="imp-mode-x">' + expl + '</span></div>';
-    } else {
-      h += '<div class="imp-mode"><div class="seg"><button class="' + (ST.replace == null ? 'on' : '') + '" data-imp="mode" data-v="">Auto per model</button><button class="' + (ST.replace === true ? 'on' : '') + '" data-imp="mode" data-v="1">Replace</button><button class="' + (ST.replace === false ? 'on' : '') + '" data-imp="mode" data-v="0">Update listed only</button></div><span class="imp-mode-x">' +
-        (ST.replace == null ? 'Each model is replaced when your sheet covers most of it, otherwise only listed securities change.' : ST.replace ? 'Securities not in your sheet go to 0.000% in each model.' : 'Only the securities in your sheet change.') + '</span></div>';
-    }
+    var rep = ST.replace == null ? g0.replace : ST.replace;
+    var cv = g0.coverage || { covered: 0, of: 0, pasted: 0 };
+    autoTxt = ST.replace == null ? '<span class="sugg-tag">Suggested</span>' : '';
+    var expl = g0.replace ? 'Your paste covers ' + cv.covered + ' of ' + cv.of + ' current holdings. Securities not in your paste go to 0.000%' + (g0.counts && g0.counts.removed ? ' (' + g0.counts.removed + ' removed)' : '') + '.' :
+      'Only the ' + cv.pasted + ' securit' + (cv.pasted === 1 ? 'y' : 'ies') + ' you pasted change. Everything else keeps its current weight.';
+    h += '<div class="imp-mode"><div class="seg" role="radiogroup"><button role="radio" aria-checked="' + !!rep + '" class="' + (rep ? 'on' : '') + '" data-imp="mode" data-v="1">Replace model</button><button role="radio" aria-checked="' + !rep + '" class="' + (!rep ? 'on' : '') + '" data-imp="mode" data-v="0">Update listed only</button></div>' + autoTxt + '<span class="imp-mode-x">' + expl + '</span></div>';
     // summary + filters
     var cnt = { changed: 0, new: 0, removed: 0, error: 0 };
     all.forEach(function (r) { if (r.kind in cnt) cnt[r.kind]++; });
     var f = function (k, label, n, cls) { return '<button class="fchip ' + (cls || '') + (ST.filter === k ? ' on' : '') + '" data-imp="filter" data-v="' + k + '">' + label + ' <b>' + n + '</b></button>'; };
     h += '<div class="imp-sum"><div class="fchips">' + f('all', 'All', all.length) + f('changed', 'Changed', cnt.changed) + f('new', 'New', cnt.new, 'c-new') + f('removed', 'Removed', cnt.removed, 'c-rem') + (cnt.error ? f('error', 'Errors', cnt.error, 'c-err') : '') + '</div>';
-    if (!ST.bulk && g0.m) h += '<div class="imp-tot">Total <b>100.000%</b><span class="sep"></span>USD Cash <b class="' + (g0.cash < -EPS ? 'neg' : '') + '">' + g0.cash.toFixed(3) + '%</b> <em>auto</em></div>';
-    else h += '<div class="imp-tot">' + G.filter(function (g) { return g.ready; }).length + ' of ' + G.length + ' models ready</div>';
+    h += '<div class="imp-tot">Total <b>100.000%</b><span class="sep"></span>USD Cash <b class="' + (g0.cash < -EPS ? 'neg' : '') + '">' + g0.cash.toFixed(3) + '%</b> <em>auto</em></div>';
     h += '</div>';
     var errN = all.filter(function (r) { return r.kind === 'error'; }).length;
     var dropped = Object.keys(ST.drop);
     if (dropped.length) h += '<div class="imp-note">' + dropped.length + ' row' + (dropped.length === 1 ? '' : 's') + ' removed from this import: <b>' + dropped.map(function (k) { return esc(ST.drop[k]); }).join(', ') + '</b>. <button data-imp="undrop">Undo</button></div>';
     if (errN) h += '<div class="imp-alert">' + C.I.errBang + '<span><b>' + errN + ' row' + (errN === 1 ? ' needs' : 's need') + ' attention.</b> Fix the security in the row, pick a suggestion, or remove the row.</span></div>';
-    var probs = G.filter(function (g) { return g.problem; });
-    if (ST.bulk && probs.length) h += '<div class="imp-alert">' + C.I.errBang + '<span><b>' + probs.length + ' model' + (probs.length === 1 ? ' needs' : 's need') + ' attention:</b> ' + probs.map(function (g) { return esc(g.m ? g.m.access : g.key) + ' (' + esc(g.problem.split(',')[0]) + ')'; }).join(', ') + '. Fix the sheet, or remove the model from this import.</span></div>';
-    G.forEach(function (g) { g.notes.forEach(function (n) { if (!ST.bulk) h += '<div class="imp-note">' + esc(n) + '</div>'; }); });
-    if (!ST.bulk && g0.problem) h += '<div class="imp-alert">' + C.I.errBang + '<span><b>' + esc(g0.problem) + '.</b> USD Cash cannot go below 0.000%.</span></div>';
+
+    G.forEach(function (g) { g.notes.forEach(function (n) { h += '<div class="imp-note">' + esc(n) + '</div>'; }); });
+    if (g0.problem) h += '<div class="imp-alert">' + C.I.errBang + '<span><b>' + esc(g0.problem) + '.</b> USD Cash cannot go below 0.000%.</span></div>';
     // table
     h += '<div class="imp-tbl" id="imp-tbl"><table class="grid imp-grid"><colgroup><col style="width:108px"><col><col style="width:92px"><col style="width:86px"><col style="width:86px"><col style="width:104px"><col style="width:190px"><col style="width:34px"></colgroup>' +
       '<thead><tr><th>Ticker</th><th>Description</th><th class="r">EOD Price</th><th class="r">Current</th><th class="r">New</th><th class="r">Change</th><th>Status</th><th></th></tr></thead>';
     G.forEach(function (g) {
       var rows = g.rows.filter(visible);
-      if (ST.bulk) {
-        var open = ST.open[g.key] != null ? ST.open[g.key] : (G.length <= 3 || (!!g.counts && g.counts.error > 0) || /^Over 100%/.test(g.problem || ''));
-        var rmG = '<button class="imp-rm-l" data-imp="dropgroup" data-v="' + esc(g.key) + '">Remove from import</button>';
-        var stat = g.problem ? '<span class="chip err">Fix needed</span><span class="rown">' + esc(g.problem) + '</span><div class="g-act">' + rmG + '</div>' :
-          g.counts.error ? '<span class="chip err">Fix needed</span>' : g.ready ? '<span class="chip ok">Ready</span><span class="rown">' + g.changes + ' change' + (g.changes === 1 ? '' : 's') + ' &middot; ' + (g.replace ? 'Replace' : 'Update') + ' &middot; Cash ' + g.cash.toFixed(3) + '%</span>' : '<span class="chip muted">No changes</span>';
-        h += '<tbody class="g' + (open ? ' open' : '') + '"><tr class="g-h" data-imp="group" data-v="' + esc(g.key) + '"><td colspan="4"><span class="gchev">' + I2.chev + '</span><b>' + esc(g.m ? g.m.access : g.key) + '</b>' + (g.m ? ' <span class="gname">' + esc(g.m.name) + '</span>' : '') + '</td><td colspan="4" class="g-stat">' + stat + '</td></tr>';
-        if (open) { h += rows.map(function (r) { return rowHtml(g, r); }).join(''); g.notes.forEach(function (n) { h += '<tr class="g-note"><td></td><td colspan="7">' + esc(n) + '</td></tr>'; }); }
-        h += '</tbody>';
-      } else h += '<tbody>' + (rows.length ? rows.map(function (r) { return rowHtml(g, r); }).join('') : '<tr class="empty-row"><td colspan="8">Nothing in this filter</td></tr>') + '</tbody>';
+      h += '<tbody>' + (rows.length ? rows.map(function (r) { return rowHtml(g, r); }).join('') : '<tr class="empty-row"><td colspan="8">Nothing in this filter</td></tr>') + '</tbody>';
     });
     return h + '</table></div>';
   }
   function footer(res) {
-    if (!ST.grid) return '<div class="imp-f-l">' + (ST.bulk ? 'Tip: press Ctrl+V on the Model List to open this panel with your data.' : 'Tip: press Ctrl+V anywhere on Model Details to open this panel with your data.') + '</div><div class="imp-f-r"><button class="btn btn-text" data-imp="close">Cancel</button></div>';
+    if (!ST.grid) return '<div class="imp-f-l">' + 'Tip: press Ctrl+V anywhere on Model Details to open this panel with your data.' + '</div><div class="imp-f-r"><button class="btn btn-text" data-imp="close">Cancel</button></div>';
     var l = '', why = '', btns = '';
     if (res.missing.length) { why = 'Map the required columns first'; l = '<span class="st-warn">' + why + '</span>'; }
-    if (!ST.bulk) {
-      var g = res.groups[0];
-      if (!why && g) {
-        if (g.problem) why = g.problem;
-        else if (g.counts.error) why = 'Fix or remove ' + g.counts.error + ' error row' + (g.counts.error === 1 ? '' : 's') + ' to continue';
-        else if (!g.ready) why = 'Nothing would change';
-        l = why ? '<span class="st-warn">' + esc(why) + '</span>' : '<span class="st-ok">' + I2.check + 'Ready &middot; ' + g.changes + ' change' + (g.changes === 1 ? '' : 's') + ' will be applied to the grid. You still review and Submit.</span>';
-      }
-      btns = '<button class="btn btn-text" data-imp="close">Cancel</button><button class="btn btn-black' + (why ? ' is-disabled' : '') + '" data-imp="apply"' + (why ? ' data-tip="' + esc(why) + '" data-tip-anchor' : '') + '>Apply to Model</button>';
-    } else {
-      var ready = res.groups.filter(function (g) { return g.ready; }), probs = res.groups.filter(function (g) { return g.problem; });
-      var errs = res.groups.reduce(function (a, g) { return a + (g.counts ? g.counts.error : 0); }, 0);
-      if (!why) {
-        if (errs) why = 'Fix or remove ' + errs + ' error row' + (errs === 1 ? '' : 's') + ' first';
-        else if (probs.length) why = 'Resolve ' + probs.length + ' model' + (probs.length === 1 ? '' : 's') + ' first: ' + probs.map(function (g) { return g.m ? g.m.access : g.key; }).join(', ');
-        else if (!ready.length) why = 'No models are ready to update';
-      }
-      l = why ? '<span class="st-warn">' + esc(why) + '</span>' : '<span class="st-ok">' + I2.check + ready.length + ' model' + (ready.length === 1 ? '' : 's') + ' ready</span>';
-      var dis = why ? ' is-disabled" data-tip="' + esc(why) + '" data-tip-anchor' : '"';
-      btns = '<button class="btn btn-text" data-imp="close">Cancel</button><button class="btn btn-tan' + dis + ' data-imp="drafts">Apply as Drafts</button><button class="btn btn-black' + dis + ' data-imp="submitall">Submit ' + (ready.length || '') + ' Model' + (ready.length === 1 ? '' : 's') + '</button>';
+    var g = res.groups[0];
+    if (!why && g) {
+      if (g.problem) why = g.problem;
+      else if (g.counts.error) why = 'Fix or remove ' + g.counts.error + ' error row' + (g.counts.error === 1 ? '' : 's') + ' to continue';
+      else if (!g.ready) why = 'Nothing would change';
+      l = why ? '<span class="st-warn">' + esc(why) + '</span>' : '<span class="st-ok">' + I2.check + 'Ready &middot; ' + g.changes + ' change' + (g.changes === 1 ? '' : 's') + ' will be applied to the grid. You still review and Submit.</span>';
     }
+    btns = '<button class="btn btn-text" data-imp="close">Cancel</button><button class="btn btn-black' + (why ? ' is-disabled' : '') + '" data-imp="apply"' + (why ? ' data-tip="' + esc(why) + '" data-tip-anchor' : '') + '>Apply to Model</button>';
     return '<div class="imp-f-l">' + l + '</div><div class="imp-f-r">' + btns + '</div>';
   }
   var lastRes = null;
@@ -482,7 +432,7 @@
     var res = ST.grid ? compute() : null;
     lastRes = res;
     var m = ST.m;
-    root.querySelector('.imp-h-t').innerHTML = '<h2>' + (ST.bulk ? 'Bulk Import' : 'Import Model') + '</h2><div class="sub">' + (m ? esc(m.name) + ' <span>' + esc(m.access) + '</span>' : 'Update many models at once from one sheet') + '</div>';
+    root.querySelector('.imp-h-t').innerHTML = '<h2>Import Model</h2><div class="sub">' + esc(m.name) + ' <span>' + esc(m.access) + '</span></div>';
     root.querySelector('.imp-body').innerHTML = ST.grid ? renderData(res) : renderEmpty();
     root.querySelector('.imp-f').innerHTML = footer(res);
     var t2 = document.getElementById('imp-tbl'); if (t2 && top) t2.scrollTop = top;
@@ -495,15 +445,15 @@
   function ingestGrid(grid, source, text) {
     grid = trimGrid(grid || []);
     if (!grid.length) { C.toast('Nothing to import. Copy rows from Excel and paste again.'); return; }
-    var d = detect(grid, ST.bulk);
-    ST.grid = grid; ST.header = d.header; ST.roles = d.roles; ST.source = source; ST.text = text || ''; ST.fix = {}; ST.drop = {}; ST.filter = 'all'; ST.replace = null; ST.open = {};
+    var d = detect(grid);
+    ST.grid = grid; ST.header = d.header; ST.roles = d.roles; ST.source = source; ST.text = text || ''; ST.fix = {}; ST.drop = {}; ST.filter = 'all'; ST.replace = null;
     ST.editing = false;
     render();
   }
   function ingestText(text, label) { ingestGrid(parseText(text), { kind: label === 'Typed' ? 'typed' : 'paste', label: label || 'Pasted from clipboard' }, text); }
   function usableRoles(roles) {
     var has = function (r) { return roles.indexOf(r) > -1; };
-    return (has('id') || has('id2')) && has('weight') && (!ST.bulk || has('access'));
+    return (has('id') || has('id2')) && has('weight');
   }
   function ingestFile(f) {
     if (!f) return;
@@ -513,7 +463,7 @@
       sheets = sheets.filter(function (sh) { return trimGrid(sh.rows).length; });
       if (!sheets.length) { C.toast(f.name + ' has no data'); return; }
       // pick the sheet you were looking at if it is importable, otherwise the first importable one
-      var usable = function (sh) { var g = trimGrid(sh.rows), d = detect(g, ST.bulk); return usableRoles(d.roles); };
+      var usable = function (sh) { var g = trimGrid(sh.rows), d = detect(g); return usableRoles(d.roles); };
       var pick = sheets.filter(function (sh) { return sh.active && usable(sh); })[0] || sheets.filter(usable)[0] || sheets.filter(function (sh) { return sh.active; })[0] || sheets[0];
       ST.file = { name: f.name, sheets: sheets };
       ingestGrid(pick.rows, { kind: 'file', label: f.name, sheet: pick.name });
@@ -569,21 +519,6 @@
       C.save(); C.route(); C.toast('Import undone', 'ok');
     });
   }
-  function applyBulk(submit) {
-    var ready = lastRes ? lastRes.groups.filter(function (g) { return g.ready; }) : [];
-    if (!ready.length) return;
-    var src = ST.source.label, total = 0, ts = null;
-    ready.forEach(function (g) {
-      buildDraft(g);
-      if (submit) { var r = C.applySubmit(g.m, 'Bulk import · ' + src + ' · ' + (g.replace ? 'Replace model' : 'Update listed only')); ts = r.ts; total += r.changes.filter(function (c) { return c.ticker !== CASH; }).length; }
-      else { C.touch(g.m); C.logEvent(g.m, { ts: C.nowStamp(), event: 'Model Imported', user: C.persona.user, details: 'Bulk import · ' + src + ' · draft' }); total += g.changes; }
-    });
-    C.save(); close(); C.route();
-    var n = ready.length;
-    C.successCard({ name: n + ' model' + (n === 1 ? '' : 's') + ' · ' + ready.map(function (g) { return g.m.access; }).slice(0, 6).join(', ') + (n > 6 ? '…' : ''), access: '' },
-      submit ? (n === 1 ? 'Model Approved' : n + ' Models Approved') : 'Drafts Ready',
-      submit ? total + ' weight change' + (total === 1 ? '' : 's') : 'Set to In Progress. Open each to review and Submit', ts || C.nowStamp());
-  }
   function copyText(text, msg) {
     var done = function () { C.toast(msg, 'ok'); };
     if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(text).then(done, fallback); else fallback();
@@ -594,20 +529,12 @@
       ta.remove();
     }
   }
-  function copyModels() {
-    var lines;
-    if (ST.m) {
-      var d = ST.m.draft && ST.m.draft.live ? ST.m.draft.rows.map(function (r) { return { t: r.ticker, w: +r.nw || 0, tt: r.tt, dnb: r.dnb, dns: r.dns, notes: r.notes }; }) : ST.m.holdings.map(function (h) { return { t: h.ticker, w: h.weight }; });
-      lines = [['Security', 'CUSIP', 'Description', 'Price', 'Weight', 'TradeType', 'DoNotBuy', 'DoNotSell', 'Notes'].join('\t')].concat(d.map(function (r) {
-        var s = SEC[r.t] || {}; return [r.t, r.t === CASH ? '' : s.id, r.t === CASH ? 'USD Cash' : s.desc, r.t === CASH ? '1.00' : (s.price || 0).toFixed(2), r.w.toFixed(3) + '%', r.tt && r.tt !== '-' ? r.tt : '', r.dnb ? 'Y' : '', r.dns ? 'Y' : '', r.notes || ''].join('\t');
-      }));
-      copyText(lines.join('\n'), 'Copied ' + (lines.length - 1) + ' rows. Paste into Excel, edit, then paste back here.');
-    } else {
-      var ms = C.models().filter(function (m) { return !C.lockedBy(m); });
-      lines = [['Access', 'Strategy Name', 'Security', 'CUSIP', 'Description', 'Price', 'Weight'].join('\t')];
-      ms.forEach(function (m) { m.holdings.forEach(function (h) { var s = SEC[h.ticker] || {}; lines.push([m.access, m.name, h.ticker, h.ticker === CASH ? '' : s.id, h.ticker === CASH ? 'USD Cash' : s.desc, h.ticker === CASH ? '1.00' : (s.price || 0).toFixed(2), h.weight.toFixed(3) + '%'].join('\t')); }); });
-      copyText(lines.join('\n'), 'Copied ' + ms.length + ' models (' + (lines.length - 1) + ' rows). Paste into Excel, edit, then paste back here.');
-    }
+  function copyModel() {
+    var m = ST.m, d = m.draft && m.draft.live ? m.draft.rows.map(function (r) { return { t: r.ticker, w: +r.nw || 0, tt: r.tt, dnb: r.dnb, dns: r.dns, notes: r.notes }; }) : m.holdings.map(function (h) { return { t: h.ticker, w: h.weight }; });
+    var lines = [['Security', 'CUSIP', 'Description', 'Price', 'Weight', 'TradeType', 'DoNotBuy', 'DoNotSell', 'Notes'].join('\t')].concat(d.map(function (r) {
+      var s = SEC[r.t] || {}; return [r.t, r.t === CASH ? '' : s.id, r.t === CASH ? 'USD Cash' : s.desc, r.t === CASH ? '1.00' : (s.price || 0).toFixed(2), r.w.toFixed(3) + '%', r.tt && r.tt !== '-' ? r.tt : '', r.dnb ? 'Y' : '', r.dns ? 'Y' : '', r.notes || ''].join('\t');
+    }));
+    copyText(lines.join('\n'), 'Copied ' + (lines.length - 1) + ' rows. Paste into Excel, edit, then paste back here.');
   }
 
   /* ---------------- snackbar with undo ---------------- */
@@ -627,8 +554,8 @@
 
   /* ---------------- open / close ---------------- */
   function open(access, payload) {
+    if (!access || !C.findModel(access)) return;
     ST = fresh(access);
-    if (access && !ST.m) { C.toast('Model ' + access + ' was not found'); return; }
     root.hidden = false;
     document.body.classList.add('imp-open');
     requestAnimationFrame(function () { root.classList.add('on'); });
@@ -657,21 +584,13 @@
       case 'type': ST.editing = true; render(); break;
       case 'edit': ST.editing = !ST.editing; render(true); break;
       case 'reset': ST.grid = null; ST.text = ''; ST.editing = false; render(); break;
-      case 'copy': copyModels(); break;
-      case 'mode': ST.replace = v === '' ? null : v === '1'; render(true); break;
+      case 'copy': copyModel(); break;
+      case 'mode': ST.replace = v === '1'; render(true); break;
       case 'filter': ST.filter = v; render(); break;
-      case 'dropgroup': {
-        var gg = lastRes && lastRes.groups.filter(function (x) { return x.key === el.getAttribute('data-v'); })[0];
-        if (gg) gg.idx.forEach(function (p) { ST.drop[p[0]] = gg.key + ' ' + (p[1] || 'row ' + (p[0] + 1)); });
-        e.stopPropagation(); C.hideTip(); render(true); break;
-      }
       case 'drop': ST.drop[el.getAttribute('data-row')] = el.getAttribute('data-tok') || ('Row ' + (+el.getAttribute('data-row') + 1)); C.hideTip(); render(true); break;
       case 'undrop': ST.drop = {}; render(true); break;
-      case 'group': ST.open[v] = !el.parentNode.classList.contains('open'); render(true); break;
       case 'sugg': ST.fix[el.getAttribute('data-row')] = el.getAttribute('data-t'); render(true); break;
       case 'apply': if (!el.classList.contains('is-disabled')) applySingle(); break;
-      case 'drafts': if (!el.classList.contains('is-disabled')) applyBulk(false); break;
-      case 'submitall': if (!el.classList.contains('is-disabled')) applyBulk(true); break;
     }
   });
   root.addEventListener('change', function (e) {
@@ -698,7 +617,7 @@
       ST.text = text;
       var g = trimGrid(parseText(text));
       if (!g.length) return;
-      var keepRoles = ST.grid && ST.grid[0].length === g[0].length ? ST.roles : null, d = detect(g, ST.bulk);
+      var keepRoles = ST.grid && ST.grid[0].length === g[0].length ? ST.roles : null, d = detect(g);
       ST.grid = g; ST.header = d.header; ST.roles = keepRoles || d.roles; ST.source = { kind: label === 'Typed' ? 'typed' : 'paste', label: label };
       ST.editing = true; render(true);
     }, 300);
@@ -706,7 +625,7 @@
   document.getElementById('imp-file').addEventListener('change', function (e) { var f = e.target.files[0]; e.target.value = ''; if (f && ST) ingestFile(f); });
 
   function editable(t) { return t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable); }
-  /* Paste anywhere: inside the drawer, or on Model Details / Model List (opens the drawer). */
+  /* Paste anywhere: inside the drawer, or on Model Details (opens the drawer). */
   /* Read what was pasted. Excel puts the cells on the clipboard as text AND as a picture;
      text always wins. HTML (some browsers / Excel Online) is the fallback; real files come last. */
   function htmlToTsv(html) {
@@ -729,18 +648,17 @@
     if (editable(e.target) || document.querySelector('#modal-root .modal')) return;
     var pl = clipPayload(e.clipboardData);
     if (!pl) return;
-    var where = ST ? 'drawer' : (C.currentModel() && C.onDetails()) ? 'details' : document.getElementById('ml-table') ? 'list' : null;
-    if (!where) return;
+    if (!ST && !(C.currentModel() && C.onDetails())) return;
     e.preventDefault();
     if (pl.image) { C.toast('That paste was only a picture. In Excel, select the cells, press Ctrl+C, then paste here.'); return; }
     if (ST) { if (pl.file) ingestFile(pl.file); else ingestText(pl.text); return; }
-    open(where === 'details' ? C.currentModel().access : null, pl);
+    open(C.currentModel().access, pl);
   });
   /* Drag a file anywhere */
   var dz = document.getElementById('imp-dropzone'), dragDepth = 0;
   function hasFiles(e) { return e.dataTransfer && Array.prototype.indexOf.call(e.dataTransfer.types || [], 'Files') > -1; }
-  function canDrop() { return ST || C.onDetails() || document.getElementById('ml-table'); }
-  document.addEventListener('dragenter', function (e) { if (!hasFiles(e) || !canDrop()) return; dragDepth++; dz.hidden = false; dz.querySelector('b').textContent = ST ? 'Drop to import' : C.onDetails() ? 'Drop to import into this model' : 'Drop to bulk import'; });
+  function canDrop() { return ST || C.onDetails(); }
+  document.addEventListener('dragenter', function (e) { if (!hasFiles(e) || !canDrop()) return; dragDepth++; dz.hidden = false; dz.querySelector('b').textContent = ST ? 'Drop to import' : 'Drop to import into this model'; });
   document.addEventListener('dragover', function (e) { if (hasFiles(e) && canDrop()) e.preventDefault(); });
   document.addEventListener('dragleave', function (e) { if (!hasFiles(e)) return; dragDepth = Math.max(0, dragDepth - 1); if (!dragDepth) dz.hidden = true; });
   document.addEventListener('drop', function (e) {
@@ -749,12 +667,12 @@
     if (!canDrop()) return;
     var f = e.dataTransfer.files[0];
     if (ST) ingestFile(f);
-    else { var m = C.currentModel(); open(m && C.onDetails() ? m.access : null, { file: f }); }
+    else open(C.currentModel().access, { file: f });
   });
   document.addEventListener('keydown', function (e) {
     if (!ST) return;
     if (e.key === 'Escape') { if (document.querySelector('#modal-root .modal')) return; e.stopPropagation(); close(); return; }
-    var primary = root.querySelector('[data-imp="apply"],[data-imp="submitall"]');
+    var primary = root.querySelector('[data-imp="apply"]');
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && primary) { e.preventDefault(); primary.click(); return; }
     if (e.key === 'Enter' && !editable(e.target) && primary && !e.target.closest('button')) { e.preventDefault(); primary.click(); }
   }, true);

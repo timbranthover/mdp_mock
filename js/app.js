@@ -359,7 +359,7 @@
           '<div class="ml-title">Model List</div>' +
           '<div class="kv mgr"><span class="k">Manager</span><span class="v">' + esc(visibleManagers().join(', ')) + '</span></div>' +
           '<div class="kv user"><span class="k">User</span><span class="v">' + esc(persona.user) + '</span></div>' +
-          '<div class="ml-tools"><button class="tool-link" data-act="list-import">' + I.excel + 'Bulk Import</button><label class="search-box">' + I.search + '<input id="ml-search" placeholder="Search" value="' + esc(L.search) + '" autocomplete="off"></label>' +
+          '<div class="ml-tools"><label class="search-box">' + I.search + '<input id="ml-search" placeholder="Search" value="' + esc(L.search) + '" autocomplete="off"></label>' +
             '<button class="icon-btn" data-act="list-export" data-tip="Download" data-tip-anchor>' + I.download + '</button>' +
             '<button class="icon-btn" data-act="print" data-tip="Print" data-tip-anchor>' + I.print + '</button></div>' +
         '</section>' +
@@ -907,14 +907,13 @@
       foot: '<button class="btn btn-text" data-act="close-modal">Go Back</button><button class="btn btn-tan" data-act="submit-anyway" data-acc="' + esc(m.access) + '" autofocus>Submit Anyway</button>'
     });
   }
-  /* Applies the draft to the model and logs it. Shared by SUBMIT and bulk import. */
-  function applySubmit(m, extra) {
+  /* Applies the draft to the model and logs it. */
+  function applySubmit(m) {
     var d = getDraft(m), df = diff(m, d), ts = nowStamp();
     m.holdings = d.rows.filter(function (r) { return +r.nw > EPS || r.ticker === CASH; }).map(function (r) { return { ticker: r.ticker, weight: round3(+r.nw) }; });
     m.holdings.sort(function (a, b) { return a.ticker === CASH ? -1 : b.ticker === CASH ? 1 : a.ticker < b.ticker ? -1 : 1; });
     m.status = 'Approved'; m.modified = ts; m.modifiedUser = persona.user;
     m.snapshots[todayISO()] = m.holdings.map(function (h) { return { ticker: h.ticker, weight: h.weight }; });
-    if (extra) logEvent(m, { ts: ts, event: 'Model Imported', user: persona.user, details: extra });
     logEvent(m, { ts: ts, event: isAdmin() ? 'Model Updated By Admin' : 'Model Updated', user: persona.user, details: '-', changes: df.changes });
     logEvent(m, { ts: ts, event: 'Model Approved', user: persona.user, details: '-', changes: df.changes });
     delete m.draft;
@@ -1267,7 +1266,6 @@
         touch(m); renderMdTable(m); toast('All securities set to ' + SEED.tradeToTarget + ' · Notes: Fully Rebalance', 'ok'); break;
       }
       case 'md-import': window.MDPImport.open(m ? m.access : null); break;
-      case 'list-import': window.MDPImport.open(null); break;
       case 'md-template': downloadTemplate(m); break;
       case 'md-clear': discardDraft(m); route(); break;
       case 'md-submit': submitModel(m); break;
@@ -1339,7 +1337,7 @@
       renderList();
     }
     document.title = current.access ? 'Model Delivery Portal - ' + current.access : 'Model Delivery Portal - Money Manager';
-    if (wantImport) setTimeout(function () { if (window.MDPImport) window.MDPImport.open(current.access && $('#md-table') ? current.access : null); }, 0);
+    if (wantImport && current.access) setTimeout(function () { if (window.MDPImport && $('#md-table')) window.MDPImport.open(current.access); }, 0);
   }
   window.addEventListener('hashchange', function () {
     if (skipRoute) { skipRoute = false; return; }
