@@ -566,3 +566,21 @@ tbody.g.open .gchev svg { transform: rotate(90deg); }
 @media (prefers-reduced-motion: reduce) { .imp, .imp-scrim { transition: none; } }
 .imp-grid td:last-child { white-space: normal; line-height: 1.35; }
 .imp-grid td:last-child .rown { white-space: normal; }
+
+/* ---------- improvements log ---------- */
+.btn-imps { position: absolute; right: 116px; top: 12px; height: 25px; display: inline-flex; align-items: center; gap: 6px; padding: 0 10px; color: #fff; text-decoration: none; font-size: 9.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; border: 1px solid rgba(255,255,255,.45); }
+.btn-imps b { background: #fff; color: var(--banner); padding: 1px 5px; font-size: 9.5px; letter-spacing: 0; }
+.btn-imps:hover { border-color: #fff; }
+.banner.detail .btn-imps { top: 34px; }
+.imps-card { padding-bottom: 18px; }
+.imps-bar { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 14px 18px; border-bottom: 1px solid var(--line); }
+.imps-legend { font-size: 11px; color: #666; white-space: nowrap; }
+.imps-scroll { height: calc(100vh - 300px); min-height: 360px; margin-top: 4px; }
+.imps-grid td { white-space: normal; vertical-align: top; padding-top: 9px; padding-bottom: 9px; height: auto; line-height: 1.45; font-size: 11.5px; }
+.imps-t { font-weight: 700; font-size: 12.5px; margin-bottom: 3px; color: #111; }
+.imps-c { color: #333; }
+.imps-today { color: #666; }
+.imps-d { font-size: 10px; color: #888; margin-top: 4px; }
+@media print { .btn-imps, .imps-bar { display: none !important; } .imps-scroll { height: auto !important; } }
+.imps-grid td { overflow: visible; text-overflow: clip; }
+.imps-grid .chip { margin-right: 0; }

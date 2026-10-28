@@ -30,6 +30,10 @@ Plain HTML/CSS/JS — no build step. Deploy the repo root as a static site on Ve
 - **Model Options**: Tax Loss Harvest Replacement saves and is logged.
 - Edits persist in the browser (localStorage).
 
+## Improvements log
+
+Everything net new vs. production is listed in the app at **Improvements** (button next to Support, or `#/improvements`). Each entry has today's behavior, the change, why it matters, and a *Try it* link. It downloads as Excel or copies as text for the product team. The source is `js/improvements.js`; see `CLAUDE.md` for how to keep it current.
+
 ## Import (proposed)
 
 A right-side drawer replaces "pick a file". Open it with **Import** (Model Details), **Bulk Import** (Model List), by pressing **Ctrl+V anywhere** on either page, or by dragging a file onto the page.
@@ -71,3 +75,4 @@ These behaviors weren't visible in the screenshots, so they are best guesses:
 - `js/app.js` — routing, screens, interactions
 - `js/xlsx.js` — dependency-free Excel writer/reader (works without CDN access)
 - `js/import.js` — Import drawer (paste/drop/type, detection, preview, bulk)
+- `js/improvements.js` — improvements log (net new vs. production)

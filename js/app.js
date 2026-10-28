@@ -347,7 +347,7 @@
   function renderList() {
     var L = S.list;
     app.innerHTML =
-      '<div class="banner"><h1>Model Delivery Portal</h1><button class="btn-support">Support</button></div>' +
+      '<div class="banner"><h1>Model Delivery Portal</h1>' + improvementsBtn() + '<button class="btn-support">Support</button></div>' +
       '<div class="page">' +
         '<section class="card ml-head">' +
           '<div class="ml-title">Model List</div>' +
@@ -549,7 +549,7 @@
     if (!SUBS[tab].some(function (s) { return s[0] === sub; })) sub = SUBS[tab][0][0];
     var base = '#/model/' + encodeURIComponent(access) + '/';
     app.innerHTML =
-      '<div class="banner detail"><a class="crumb" href="#/">' + I.left + 'Model List</a><h1>Model Delivery Portal</h1><button class="btn-support">Support</button></div>' +
+      '<div class="banner detail"><a class="crumb" href="#/">' + I.left + 'Model List</a><h1>Model Delivery Portal</h1>' + improvementsBtn() + '<button class="btn-support">Support</button></div>' +
       '<div class="page">' +
         '<section class="card d-head">' +
           '<div class="tabs big">' + TABS.map(function (t) { return '<a href="' + base + t[0] + '/' + t[2] + '" class="' + (t[0] === tab ? 'on' : '') + '">' + t[1] + '</a>'; }).join('') + '</div>' +
@@ -1029,6 +1029,56 @@
   }
 
   /* =====================================================================
+   * IMPROVEMENTS LOG — net new vs production (data in js/improvements.js)
+   * ===================================================================== */
+  var IMPS = window.MDP_IMPROVEMENTS || [], impState = { area: 'All', q: '' };
+  function improvementsBtn() { return IMPS.length ? '<a class="btn-imps" href="#/improvements" data-tip="Everything in this twin that is new vs. production" data-tip-anchor>Improvements <b>' + IMPS.length + '</b></a>' : ''; }
+  function impFiltered() {
+    var q = impState.q.trim().toLowerCase();
+    return IMPS.filter(function (x) {
+      if (impState.area !== 'All' && x.area !== impState.area) return false;
+      return !q || (x.id + ' ' + x.area + ' ' + x.title + ' ' + x.today + ' ' + x.change + ' ' + x.why).toLowerCase().indexOf(q) > -1;
+    });
+  }
+  function renderImprovements() {
+    var areas = ['All'];
+    IMPS.forEach(function (x) { if (areas.indexOf(x.area) < 0) areas.push(x.area); });
+    var latest = IMPS.reduce(function (a, x) { return x.added > a ? x.added : a; }, '');
+    app.innerHTML =
+      '<div class="banner detail"><a class="crumb" href="#/">' + I.left + 'Model List</a><h1>Model Delivery Portal</h1><button class="btn-support">Support</button></div>' +
+      '<div class="page">' +
+        '<section class="card ml-head">' +
+          '<div class="ml-title">Improvements</div>' +
+          '<div class="kv mgr"><span class="k">Net new vs. current production Model Delivery Portal</span><span class="v">' + IMPS.length + ' improvements &middot; ' + (areas.length - 1) + ' areas &middot; last updated ' + fmt.day(latest) + '</span></div>' +
+          '<div class="ml-tools"><label class="search-box">' + I.search + '<input id="imp-q" placeholder="Search" value="' + esc(impState.q) + '" autocomplete="off"></label>' +
+            '<button class="tool-link" data-act="imps-copy">Copy</button>' +
+            '<button class="icon-btn" data-act="imps-xlsx" data-tip="Download Excel" data-tip-anchor>' + I.download + '</button>' +
+            '<button class="icon-btn" data-act="print" data-tip="Print" data-tip-anchor>' + I.print + '</button></div>' +
+        '</section>' +
+        '<section class="card grid-card imps-card">' +
+          '<div class="imps-bar"><div class="fchips">' + areas.map(function (a) {
+            var n = a === 'All' ? IMPS.length : IMPS.filter(function (x) { return x.area === a; }).length;
+            return '<button class="fchip' + (impState.area === a ? ' on' : '') + '" data-act="imps-area" data-v="' + esc(a) + '">' + esc(a) + ' <b>' + n + '</b></button>';
+          }).join('') + '</div><span class="imps-legend">Status: <b>Proposed</b> = built in this twin for review with the product team</span></div>' +
+          '<div class="grid-scroll imps-scroll"><table class="grid imps-grid"><colgroup><col style="width:78px"><col style="width:118px"><col style="width:30%"><col style="width:22%"><col><col style="width:104px"><col style="width:70px"></colgroup>' +
+          '<thead><tr><th>ID</th><th>Area</th><th>Improvement</th><th>Today (production)</th><th>Why it matters</th><th>Status</th><th></th></tr></thead><tbody id="imps-body"></tbody></table></div>' +
+        '</section>' +
+      '</div>';
+    drawImps();
+    $('#imp-q').addEventListener('input', function (e) { impState.q = e.target.value; drawImps(); });
+  }
+  function drawImps() {
+    var rows = impFiltered();
+    $('#imps-body').innerHTML = rows.length ? rows.map(function (x) {
+      return '<tr><td class="b">' + esc(x.id) + '</td><td>' + esc(x.area) + '</td>' +
+        '<td><div class="imps-t">' + esc(x.title) + '</div><div class="imps-c">' + esc(x.change) + '</div></td>' +
+        '<td class="imps-today">' + esc(x.today) + '</td><td>' + esc(x.why) + '</td>' +
+        '<td><span class="chip new">' + esc(x.status) + '</span><div class="imps-d">' + fmt.day(x.added) + '</div></td>' +
+        '<td>' + (x.try ? '<a class="lnk" href="' + esc(x.try) + '">Try it</a>' : '') + '</td></tr>';
+    }).join('') : '<tr class="empty-row"><td colspan="7">No improvements match</td></tr>';
+  }
+
+  /* =====================================================================
    * EVENTS (one delegated listener for the whole app)
    * ===================================================================== */
   document.addEventListener('click', function (e) {
@@ -1137,6 +1187,19 @@
         break;
       }
       case 'perf-profile': if (m) showProfileReport(m); break;
+      case 'imps-area': impState.area = el.getAttribute('data-v'); renderImprovements(); break;
+      case 'imps-xlsx':
+        window.MDPXlsx.write('MDP_Twin_Improvements_' + todayISO() + '.xlsx', 'Improvements',
+          [{ h: 'ID', w: 10 }, { h: 'Area', w: 16 }, { h: 'Improvement', w: 38 }, { h: 'Today (production)', w: 50 }, { h: 'Change in twin', w: 60 }, { h: 'Why it matters', w: 46 }, { h: 'Status', w: 11 }, { h: 'Added', w: 12 }],
+          impFiltered().map(function (x) { return [x.id, x.area, x.title, x.today, x.change, x.why, x.status, fmt.day(x.added)]; }), { title: 'MDP Twin Improvements' });
+        break;
+      case 'imps-copy': {
+        var txt = impFiltered().map(function (x) { return x.id + ' [' + x.area + '] ' + x.title + '\n  Today: ' + x.today + '\n  Change: ' + x.change + '\n  Why: ' + x.why; }).join('\n\n');
+        var done = function () { toast('Copied ' + impFiltered().length + ' improvements. Paste into email or Teams.', 'ok'); };
+        var fb = function () { var ta = document.createElement('textarea'); ta.value = txt; ta.style.cssText = 'position:fixed;opacity:0'; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); done(); } catch (er) { toast('Copy failed'); } ta.remove(); };
+        if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(txt).then(done, fb); else fb();
+        break;
+      }
     }
   });
   document.addEventListener('change', function (e) {
@@ -1155,7 +1218,9 @@
     ribbon.hidden = true;
     // drop untouched drafts so stale weights never leak between visits
     S.models.forEach(function (m) { if (m.draft && !m.draft.live) delete m.draft; });
-    var h = location.hash.replace(/^#\/?/, '').split('/');
+    var hq = location.hash.split('?'), wantImport = hq[1] === 'import';
+    var h = hq[0].replace(/^#\/?/, '').split('/');
+    if (h[0] === 'improvements') { current.access = null; confirmedHere = null; renderImprovements(); document.title = 'Model Delivery Portal - Improvements'; return; }
     if (h[0] !== 'model' || decodeURIComponent(h[1] || '') !== confirmedHere) confirmedHere = null;
     if (h[0] === 'model' && h[1]) {
       current.access = decodeURIComponent(h[1]);
@@ -1165,6 +1230,7 @@
       renderList();
     }
     document.title = current.access ? 'Model Delivery Portal - ' + current.access : 'Model Delivery Portal - Money Manager';
+    if (wantImport) setTimeout(function () { if (window.MDPImport) window.MDPImport.open(current.access && $('#md-table') ? current.access : null); }, 0);
   }
   window.addEventListener('hashchange', function () {
     if (skipRoute) { skipRoute = false; return; }
