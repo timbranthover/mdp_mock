@@ -119,14 +119,14 @@
       why: 'Triage the list without opening each model.', added: '2026-10-28', status: P, try: '#/' },
 
     // ---------- Excel ----------
-    { id: 'XL-01', area: 'Excel', title: 'Cleaner import template',
-      today: 'Plain template. Users must figure out the valid values.',
-      change: 'Same columns and "Import" sheet, plus styled required columns, a frozen header, column widths, and dropdowns for DoNotBuy, DoNotSell and TradeType.',
-      why: 'Fewer invalid values and failed uploads.', added: D, status: P },
+    { id: 'XL-01', area: 'Excel', title: 'Simpler import template with clear required vs optional',
+      today: 'Template lists Security, CUSIP, Description, InvestmentType, Price, Weight, Difference, DoNotBuy, DoNotSell and TradeType with confusing "required if…" rules. Users must figure out what to fill in.',
+      change: 'Six columns: Security and Weight % (required, dark headers), TradeType / DoNotBuy / DoNotSell / Notes (optional, light headers). Each cell shows a hint when selected, Weight warns outside 0–100, and dropdowns cover TradeType and Y/N. A "How to use" sheet explains every column, examples, what blank means, and tips (cash is automatic, Replace vs Update, copy-paste instead of upload).',
+      why: 'Users fill in only what matters. Optional fields never cause a failed import.', added: '2026-10-28', status: P },
     { id: 'XL-02', area: 'Excel', title: 'Model download in the import format',
       today: 'Download and import formats differ.',
-      change: 'The model download produces the import template pre-filled with current weights, so it can be edited and re-imported as is.',
-      why: 'Download → edit → import with no reformatting.', added: D, status: P },
+      change: 'Downloading a model gives the same six importable columns, filled with current weights, so it can be edited and pasted back as is. CUSIP, Description and EOD Price are added at the end, greyed and labelled "reference" (ignored on import).',
+      why: 'Download → edit → paste back with no reformatting.', added: '2026-10-28', status: P },
 
     // ---------- Model Snapshot ----------
     { id: 'SNAP-01', area: 'Model Snapshot', title: 'Opens on the latest saved snapshot',

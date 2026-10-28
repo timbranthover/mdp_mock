@@ -35,7 +35,7 @@
     [/^(donotbuy|dnb)/, 'dnb'],
     [/^(donotsell|dns)/, 'dns'],
     [/^(notes?|comments?|memo)/, 'notes'],
-    [/^(description|name|securityname|strategyname|price|difference|change|investmenttype|type|weightchange|currentweight|oldweight|previousweight)/, 'ignore']
+    [/^(description|name|securityname|strategyname|price|eodprice|difference|change|investmenttype|type|weightchange|currentweight|oldweight|previousweight)/, 'ignore']
   ];
 
   /* ---------------- small helpers ---------------- */
@@ -150,7 +150,8 @@
     var data = header ? grid.slice(1) : grid, sample = data.slice(0, 300);
     for (var j = 0; j < w; j++) {
       var role = null;
-      if (header) { var n = normHeader(r0[j]); for (var k = 0; k < HEADER_RULES.length; k++) if (HEADER_RULES[k][0].test(n)) { role = HEADER_RULES[k][1]; break; } }
+      if (header && /\(\s*reference\s*\)/i.test(String(r0[j]))) role = 'ignore'; // reference-only columns from the portal download
+      else if (header) { var n = normHeader(r0[j]); for (var k = 0; k < HEADER_RULES.length; k++) if (HEADER_RULES[k][0].test(n)) { role = HEADER_RULES[k][1]; break; } }
       if (!role) {
         var vals = sample.map(function (r) { return r[j]; }).filter(function (v) { return String(v).trim() !== ''; });
         var nv = vals.length || 1;

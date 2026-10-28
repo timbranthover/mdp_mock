@@ -971,29 +971,48 @@
     c.classList.add('out');
     setTimeout(function () { if (c.parentNode) c.remove(); }, 180);
   }
-  /* ---- Excel template (mirrors the production DYNAMIC/STATIC_MODEL_Template "Import" sheet) ---- */
+  /* ---- Excel template: only Security + Weight are required; everything else is optional ---- */
+  var TRADE_LIST = SEED.tradeTypes.slice(1);
   var TEMPLATE_COLS = [
-    { h: 'Security (Required, if CUSIP is blank)', w: 24, required: 1, key: 'security' },
-    { h: 'CUSIP (Required, if Security is blank)', w: 24, required: 1, key: 'cusip' },
-    { h: 'Description', w: 34, key: 'desc' },
-    { h: 'InvestmentType', w: 16, key: 'itype' },
-    { h: 'Price', w: 11, fmt: 'price', key: 'price' },
-    { h: 'Weight (Required, Blank defaults to Zero)', w: 22, required: 1, fmt: 'weight', key: 'weight' },
-    { h: 'Difference', w: 12, fmt: 'weight', key: 'diff' },
-    { h: 'DoNotBuy', w: 11, list: ['Y', 'N'], key: 'dnb' },
-    { h: 'DoNotSell', w: 11, list: ['Y', 'N'], key: 'dns' },
-    { h: 'TradeType (Required)', w: 28, required: 1, list: SEED.tradeTypes.slice(1), key: 'tt' }
+    { h: 'Security (required)', w: 22, required: 1, promptTitle: 'Security', prompt: 'Ticker, CUSIP, CINS or SEDOL. UCITS models: use the CINS. Company names (e.g. Apple) also work.' },
+    { h: 'Weight % (required)', w: 18, required: 1, fmt: 'weight', max: 100, promptTitle: 'Weight %', prompt: 'Target weight in percent. 4.5 means 4.5%. Blank = 0 (security removed). USD Cash is calculated for you.' },
+    { h: 'TradeType (optional)', w: 28, list: TRADE_LIST, promptTitle: 'TradeType (optional)', prompt: 'Pick from the list, or leave blank.' },
+    { h: 'DoNotBuy (optional)', w: 17, list: ['Y', 'N'], promptTitle: 'DoNotBuy (optional)', prompt: 'Y to block buys. Blank = N.' },
+    { h: 'DoNotSell (optional)', w: 17, list: ['Y', 'N'], promptTitle: 'DoNotSell (optional)', prompt: 'Y to block sells. Blank = N.' },
+    { h: 'Notes (optional)', w: 30, promptTitle: 'Notes (optional)', prompt: 'Free text, e.g. Fully Rebalance.' }
   ];
+  var REF_COLS = [
+    { h: 'CUSIP (reference)', w: 14, ref: 1 },
+    { h: 'Description (reference)', w: 34, ref: 1 },
+    { h: 'EOD Price (reference)', w: 14, ref: 1, fmt: 'price' }
+  ];
+  function howToSheet(withRef) {
+    var L = [
+      { style: 'title', cells: ['How to fill in this template'] },
+      { style: 'muted', cells: ['Only two columns are required: Security and Weight %. Everything else is optional. Leave it blank and the import still works.'] },
+      { style: 'gap' },
+      { style: 'hdr', cells: ['Column', 'Required?', 'What to enter', 'Example', 'If left blank'] },
+      { style: 'row', cells: ['Security', 'Required', 'Ticker, CUSIP, CINS or SEDOL. UCITS models: use the CINS. Company names also work.', 'AAPL', 'The row is flagged so you can fix or remove it'] },
+      { style: 'row', cells: ['Weight %', 'Required', 'Target weight in percent, up to 3 decimals. 4.5 means 4.5%. 4.5% also works.', '4.5', '0.000%: the security is removed from the model'] },
+      { style: 'row', cells: ['TradeType', 'Optional', TRADE_LIST.join(', '), 'Buy', 'No trade type'] },
+      { style: 'row', cells: ['DoNotBuy', 'Optional', 'Y to block buys', 'Y', 'N'] },
+      { style: 'row', cells: ['DoNotSell', 'Optional', 'Y to block sells', 'Y', 'N'] },
+      { style: 'row', cells: ['Notes', 'Optional', 'Free text', 'Fully Rebalance', 'No note'] }
+    ];
+    if (withRef) L.push({ style: 'row', cells: ['CUSIP / Description / EOD Price', 'Reference only', 'Shown to help you review. Ignored on import.', '', ''] });
+    L.push({ style: 'gap' },
+      { style: 'title', cells: ['Tips'] },
+      { style: 'muted', cells: ['• USD Cash is calculated automatically so the model totals 100%. You do not need a cash row.'] },
+      { style: 'muted', cells: ['• List the whole model to replace it, or only the securities you are changing. In the portal, choose "Replace model" or "Update listed only".'] },
+      { style: 'muted', cells: ['• No need to save or upload: select your rows, press Ctrl+C, then press Ctrl+V on the model in the portal. You can also drop the file onto the page.'] },
+      { style: 'muted', cells: ['• Headers can stay or go, and columns can be in any order. Problems are shown row by row before anything changes.'] });
+    return { name: 'How to use', notes: true, widths: [30, 16, 62, 18, 40], lines: L };
+  }
   function downloadTemplate(m) {
     var name = (m && m.type ? m.type.toUpperCase() : 'MODEL') + '_MODEL_Template.xlsx';
-    window.MDPXlsx.write(name, 'Import', TEMPLATE_COLS, [], { blankRows: 60, title: name.replace('.xlsx', '') });
+    window.MDPXlsx.writeBook(name, [{ name: 'Import', cols: TEMPLATE_COLS, rows: [], blankRows: 60 }, howToSheet(false)], { title: name.replace('.xlsx', '') });
   }
-  function investmentType(s) {
-    if (!s) return '';
-    if (s.group === 'afunds') return 'Mutual Fund';
-    if (/ETF|ETC|TRUST|SPDR|SHARES/.test(s.desc)) return 'ETF';
-    return 'Equity';
-  }
+
 
 
   /* ---------- Model Options ---------- */
@@ -1233,11 +1252,13 @@
       }
       case 'model-export':
         if (m) {
-          var rowsX = getDraft(m).rows.map(function (r) {
-            var sx = secFor(r.ticker) || {}, nwv = +r.nw || 0;
-            return [r.ticker, r.ticker === CASH ? '' : sx.id, sx.desc, r.ticker === CASH ? 'Cash' : investmentType(sx), sx.price || 0, round3(nwv), round3(nwv - r.weight), r.ticker === CASH ? '' : (r.dnb ? 'Y' : 'N'), r.ticker === CASH ? '' : (r.dns ? 'Y' : 'N'), r.ticker === CASH || r.tt === '-' ? '' : r.tt];
+          // same importable columns first (so it pastes straight back), reference columns greyed at the end
+          var rowsX = getDraft(m).rows.filter(function (r) { return r.ticker !== CASH; }).map(function (r) {
+            var sx = secFor(r.ticker) || {};
+            return [r.ticker, round3(+r.nw || 0), r.tt === '-' ? '' : r.tt, r.dnb ? 'Y' : '', r.dns ? 'Y' : '', r.notes || '', sx.id || '', sx.desc || '', sx.price || ''];
           });
-          window.MDPXlsx.write(m.access + '_' + m.type.toUpperCase() + '_MODEL_' + todayISO() + '.xlsx', 'Import', TEMPLATE_COLS, rowsX, { blankRows: rowsX.length + 20, title: m.name });
+          window.MDPXlsx.writeBook(m.access + '_' + m.type.toUpperCase() + '_MODEL_' + todayISO() + '.xlsx',
+            [{ name: 'Import', cols: TEMPLATE_COLS.concat(REF_COLS), rows: rowsX, blankRows: rowsX.length + 20 }, howToSheet(true)], { title: m.name });
         }
         break;
       case 'md-sort': {
