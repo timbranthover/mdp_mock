@@ -197,7 +197,7 @@
   var ST = null;
   function fresh(access) {
     var m = access ? C.findModel(access) : null;
-    return { bulk: !m, m: m, grid: null, header: false, roles: [], text: '', source: null, replace: null, skip: false, filter: 'all', fix: {}, open: {}, editing: false };
+    return { bulk: !m, m: m, grid: null, header: false, roles: [], text: '', source: null, replace: null, skip: false, filter: 'all', fix: {}, drop: {}, open: {}, editing: false };
   }
 
   /* ---------------- compute preview ---------------- */
@@ -221,8 +221,10 @@
     var groups = {}, order = [];
     data.forEach(function (r, i) {
       var key = ST.bulk ? String(r[cA] || '').trim().toUpperCase() || '(blank)' : '_';
+      var gi = i + (ST.header ? 1 : 0);
+      if (ST.drop[gi]) return;
       if (!groups[key]) { groups[key] = []; order.push(key); }
-      groups[key].push({ i: i + (ST.header ? 1 : 0), r: r });
+      groups[key].push({ i: gi, r: r });
     });
     order.forEach(function (key) {
       var m = ST.bulk ? acc[key] : ST.m, g = { key: key, m: m, rows: [], notes: [], problem: null };
@@ -332,14 +334,15 @@
   function rowHtml(g, r) {
     var s = r.t && SEC[r.t], price = r.t === CASH ? 1 : s ? s.price : null, chip = CHIP[r.kind] || ['', ''], extra = '';
     if (r.kind === 'error' || r.kind === 'skipped') {
+      var rmLink = r.kind === 'error' ? '<button class="imp-rm-l" data-imp="drop" data-row="' + r.i + '" data-tok="' + esc(r.token) + '">Remove row</button>' : '';
       var sugg = r.sugg && r.sugg.length ? '<div class="imp-sugg">' + (r.kind === 'error' && /Invalid/.test(r.err) ? 'Did you mean ' : '') + r.sugg.map(function (t) { return '<button data-imp="sugg" data-row="' + r.i + '" data-t="' + esc(t) + '" title="' + esc(SEC[t].desc) + '">' + esc(t) + '</button>'; }).join('') + '</div>' : '';
       return '<tr class="k-' + r.kind + '"><td><input class="imp-fix" data-row="' + r.i + '" value="' + esc(r.token) + '" spellcheck="false" aria-label="Fix security for row ' + (r.i + 1) + '"></td>' +
-        '<td colspan="5"><div class="imp-err">' + esc(r.err) + (r.kind === 'skipped' ? ' <em>(skipped)</em>' : '') + '</div>' + sugg + '</td>' +
-        '<td><span class="chip ' + chip[0] + '">' + chip[1] + '</span><span class="rown">Row ' + (r.i + 1) + '</span></td></tr>';
+        '<td colspan="5"><div class="imp-err">' + esc(r.err) + (r.kind === 'skipped' ? ' <em>(skipped)</em>' : '') + '</div>' + (sugg || rmLink ? '<div class="imp-sugg">' + (sugg ? sugg.replace(/^<div class="imp-sugg">|<\/div>$/g, '') : '') + (sugg && rmLink ? '<span class="or">or</span>' : '') + rmLink + '</div>' : '') + '</td>' +
+        '<td><span class="chip ' + chip[0] + '">' + chip[1] + '</span><span class="rown">Row ' + (r.i + 1) + '</span></td>' + RM(r) + '</tr>';
     }
     if (r.kind === 'merged') {
       return '<tr class="k-merged"><td>' + esc(r.t) + '</td><td class="desc">' + esc(s ? s.desc : '') + '</td><td class="r">' + (price != null ? '$' + num(price, 2) : '') + '</td><td class="r"></td><td class="r muted">' + r.nw.toFixed(3) + '%</td><td></td>' +
-        '<td><span class="chip info">Combined</span><span class="rown">Added to ' + esc(r.into) + ' above</span></td></tr>';
+        '<td><span class="chip info">Combined</span><span class="rown">Added to ' + esc(r.into) + ' above</span></td>' + RM(r) + '</tr>';
     }
     if (r.how === 'name') extra = '<span class="rown">Matched “' + esc(r.token) + '” by name</span>';
     else if (r.combined) extra = '<span class="rown">' + r.combined + ' rows combined</span>';
@@ -349,8 +352,9 @@
     if (r.how === 'name' && r.kind !== 'error') chipHtml = '<span class="chip name">By name</span>' + (r.kind === 'new' ? '<span class="chip new">New</span>' : '');
     return '<tr class="k-' + r.kind + (r.kind === 'cash' && g.cash < -EPS ? ' bad' : '') + '"><td class="tk">' + esc(r.t) + '</td><td class="desc" title="' + esc(s ? s.desc : '') + '">' + esc(r.t === CASH ? 'USD Cash' : s ? s.desc : '') + '</td>' +
       '<td class="r">' + (price != null ? '$' + num(price, 2) : '') + '</td><td class="r">' + r.cur.toFixed(3) + '%</td><td class="r b' + (r.kind === 'cash' && g.cash < -EPS ? ' neg' : '') + '">' + r.nw.toFixed(3) + '%</td><td class="r">' + chg(r.cur, r.nw) + '</td>' +
-      '<td>' + chipHtml + extra + '</td></tr>';
+      '<td>' + chipHtml + extra + '</td>' + RM(r) + '</tr>';
   }
+  function RM(r) { return '<td class="rmc">' + (r.i != null ? '<button class="imp-rm" data-imp="drop" data-row="' + r.i + '" data-tok="' + esc(r.token || r.t || '') + '" data-tip="Remove this row from the import" data-tip-anchor aria-label="Remove row">' + I2.x + '</button>' : '') + '</td>'; }
   function visible(r) {
     var f = ST.filter;
     if (f === 'all') return true;
@@ -424,23 +428,25 @@
     else h += '<div class="imp-tot">' + G.filter(function (g) { return g.ready; }).length + ' of ' + G.length + ' models ready</div>';
     h += '</div>';
     var errN = all.filter(function (r) { return r.kind === 'error'; }).length;
-    if (errN) h += '<div class="imp-alert">' + C.I.errBang + '<span><b>' + errN + ' row' + (errN === 1 ? ' needs' : 's need') + ' attention.</b> Fix the security in the row, pick a suggestion, or</span><button class="btn btn-text" data-imp="skip">Skip ' + (errN === 1 ? 'it' : 'them') + '</button></div>';
+    var dropped = Object.keys(ST.drop);
+    if (dropped.length) h += '<div class="imp-note">' + dropped.length + ' row' + (dropped.length === 1 ? '' : 's') + ' removed from this import: <b>' + dropped.map(function (k) { return esc(ST.drop[k]); }).join(', ') + '</b>. <button data-imp="undrop">Undo</button></div>';
+    if (errN) h += '<div class="imp-alert">' + C.I.errBang + '<span><b>' + errN + ' row' + (errN === 1 ? ' needs' : 's need') + ' attention.</b> Fix the security, pick a suggestion, remove the row, or</span><button class="btn btn-text" data-imp="skip">Skip ' + (errN === 1 ? 'it' : 'them') + '</button></div>';
     else if (ST.skip && cnt.error) h += '<div class="imp-note">' + cnt.error + ' error row' + (cnt.error === 1 ? ' is' : 's are') + ' skipped. <button data-imp="unskip">Undo skip</button></div>';
     G.forEach(function (g) { g.notes.forEach(function (n) { if (!ST.bulk) h += '<div class="imp-note">' + esc(n) + '</div>'; }); });
     if (!ST.bulk && g0.problem) h += '<div class="imp-alert">' + C.I.errBang + '<span><b>' + esc(g0.problem) + '.</b> USD Cash cannot go below 0.000%.</span></div>';
     // table
-    h += '<div class="imp-tbl" id="imp-tbl"><table class="grid imp-grid"><colgroup><col style="width:108px"><col><col style="width:92px"><col style="width:86px"><col style="width:86px"><col style="width:104px"><col style="width:190px"></colgroup>' +
-      '<thead><tr><th>Ticker</th><th>Description</th><th class="r">EOD Price</th><th class="r">Current</th><th class="r">New</th><th class="r">Change</th><th>Status</th></tr></thead>';
+    h += '<div class="imp-tbl" id="imp-tbl"><table class="grid imp-grid"><colgroup><col style="width:108px"><col><col style="width:92px"><col style="width:86px"><col style="width:86px"><col style="width:104px"><col style="width:190px"><col style="width:34px"></colgroup>' +
+      '<thead><tr><th>Ticker</th><th>Description</th><th class="r">EOD Price</th><th class="r">Current</th><th class="r">New</th><th class="r">Change</th><th>Status</th><th></th></tr></thead>';
     G.forEach(function (g) {
       var rows = g.rows.filter(visible);
       if (ST.bulk) {
         var open = ST.open[g.key] != null ? ST.open[g.key] : (G.length <= 3 || (!!g.counts && g.counts.error > 0) || /^Over 100%/.test(g.problem || ''));
         var stat = g.problem ? '<span class="chip err">Skipped</span><span class="rown">' + esc(g.problem) + '</span>' :
           g.counts.error ? '<span class="chip err">Fix needed</span>' : g.ready ? '<span class="chip ok">Ready</span><span class="rown">' + g.changes + ' change' + (g.changes === 1 ? '' : 's') + ' &middot; ' + (g.replace ? 'Replace' : 'Update') + ' &middot; Cash ' + g.cash.toFixed(3) + '%</span>' : '<span class="chip muted">No changes</span>';
-        h += '<tbody class="g' + (open ? ' open' : '') + '"><tr class="g-h" data-imp="group" data-v="' + esc(g.key) + '"><td colspan="6"><span class="gchev">' + I2.chev + '</span><b>' + esc(g.m ? g.m.access : g.key) + '</b>' + (g.m ? ' <span class="gname">' + esc(g.m.name) + '</span>' : '') + '</td><td>' + stat + '</td></tr>';
-        if (open) { h += rows.map(function (r) { return rowHtml(g, r); }).join(''); g.notes.forEach(function (n) { h += '<tr class="g-note"><td></td><td colspan="6">' + esc(n) + '</td></tr>'; }); }
+        h += '<tbody class="g' + (open ? ' open' : '') + '"><tr class="g-h" data-imp="group" data-v="' + esc(g.key) + '"><td colspan="6"><span class="gchev">' + I2.chev + '</span><b>' + esc(g.m ? g.m.access : g.key) + '</b>' + (g.m ? ' <span class="gname">' + esc(g.m.name) + '</span>' : '') + '</td><td colspan="2">' + stat + '</td></tr>';
+        if (open) { h += rows.map(function (r) { return rowHtml(g, r); }).join(''); g.notes.forEach(function (n) { h += '<tr class="g-note"><td></td><td colspan="7">' + esc(n) + '</td></tr>'; }); }
         h += '</tbody>';
-      } else h += '<tbody>' + (rows.length ? rows.map(function (r) { return rowHtml(g, r); }).join('') : '<tr class="empty-row"><td colspan="7">Nothing in this filter</td></tr>') + '</tbody>';
+      } else h += '<tbody>' + (rows.length ? rows.map(function (r) { return rowHtml(g, r); }).join('') : '<tr class="empty-row"><td colspan="8">Nothing in this filter</td></tr>') + '</tbody>';
     });
     return h + '</table></div>';
   }
@@ -452,7 +458,7 @@
       var g = res.groups[0];
       if (!why && g) {
         if (g.problem) why = g.problem;
-        else if (g.counts.error) why = 'Fix or skip ' + g.counts.error + ' error row' + (g.counts.error === 1 ? '' : 's') + ' to continue';
+        else if (g.counts.error) why = 'Fix, remove or skip ' + g.counts.error + ' error row' + (g.counts.error === 1 ? '' : 's') + ' to continue';
         else if (!g.ready) why = 'Nothing would change';
         l = why ? '<span class="st-warn">' + esc(why) + '</span>' : '<span class="st-ok">' + I2.check + 'Ready &middot; ' + g.changes + ' change' + (g.changes === 1 ? '' : 's') + ' will be applied to the grid. You still review and Submit.</span>';
       }
@@ -461,7 +467,7 @@
       var ready = res.groups.filter(function (g) { return g.ready; }), skipped = res.groups.filter(function (g) { return g.problem; }).length;
       var errs = res.groups.reduce(function (a, g) { return a + (g.counts ? g.counts.error : 0); }, 0);
       if (!why) {
-        if (errs) why = 'Fix or skip ' + errs + ' error row' + (errs === 1 ? '' : 's') + ' first';
+        if (errs) why = 'Fix, remove or skip ' + errs + ' error row' + (errs === 1 ? '' : 's') + ' first';
         else if (!ready.length) why = 'No models are ready to update';
       }
       l = why ? '<span class="st-warn">' + esc(why) + '</span>' : '<span class="st-ok">' + I2.check + ready.length + ' model' + (ready.length === 1 ? '' : 's') + ' ready' + (skipped ? ' &middot; ' + skipped + ' will be skipped' : '') + '</span>';
@@ -492,7 +498,7 @@
     grid = trimGrid(grid || []);
     if (!grid.length) { C.toast('Nothing to import. Copy rows from Excel and paste again.'); return; }
     var d = detect(grid, ST.bulk);
-    ST.grid = grid; ST.header = d.header; ST.roles = d.roles; ST.source = source; ST.text = text || ''; ST.fix = {}; ST.skip = false; ST.filter = 'all'; ST.replace = null; ST.open = {};
+    ST.grid = grid; ST.header = d.header; ST.roles = d.roles; ST.source = source; ST.text = text || ''; ST.fix = {}; ST.drop = {}; ST.skip = false; ST.filter = 'all'; ST.replace = null; ST.open = {};
     ST.editing = false;
     render();
   }
@@ -659,6 +665,8 @@
       case 'filter': ST.filter = v; render(); break;
       case 'skip': ST.skip = true; render(true); break;
       case 'unskip': ST.skip = false; render(true); break;
+      case 'drop': ST.drop[el.getAttribute('data-row')] = el.getAttribute('data-tok') || ('Row ' + (+el.getAttribute('data-row') + 1)); C.hideTip(); render(true); break;
+      case 'undrop': ST.drop = {}; render(true); break;
       case 'group': ST.open[v] = !el.parentNode.classList.contains('open'); render(true); break;
       case 'sugg': ST.fix[el.getAttribute('data-row')] = el.getAttribute('data-t'); render(true); break;
       case 'apply': if (!el.classList.contains('is-disabled')) applySingle(); break;
