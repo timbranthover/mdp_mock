@@ -40,10 +40,10 @@ A right-side drawer replaces "pick a file". Open it with **Import** (Model Detai
 
 - **Paste from Excel, type, drop or browse.** Headers are optional. Columns are detected (Security/CUSIP, Weight, TradeType, DoNotBuy, DoNotSell, Notes, Access) and can be remapped.
 - **Recognition:** ticker, CUSIP, CINS, SEDOL, or company name ("Apple"). Ticker typos get suggestions ("APPL" → AAPL). Weights as `10%`, `10` or `0.10`. Duplicates are combined and explained.
-- **Same rules as the grid:** restricted, not eligible, UCITS-needs-CINS and invalid securities are flagged in the row, with one-click fixes or *Skip*. USD Cash balances to 100% automatically and cannot go below 0.
+- **Same rules as the grid:** restricted, not eligible, UCITS-needs-CINS and invalid securities are flagged in the row, with one-click fixes or *Remove row*. Nothing is skipped silently: every issue is fixed or removed before applying. USD Cash balances to 100% automatically and cannot go below 0.
 - **Modes:** *Replace model* or *Update listed only*, suggested automatically from how much of the model you pasted.
 - **Single model:** *Apply to Model* fills the grid (changed rows highlighted). Review, then Submit. **Undo** for 10 seconds.
-- **Bulk:** one sheet with an Access column updates many models. Locked, unknown or over-100% models are skipped with a reason. *Submit N Models* or *Apply as Drafts*.
+- **Bulk:** one sheet with an Access column updates many models. Locked, unknown or over-100% models are flagged and must be fixed or removed from the import before submitting. *Submit N Models* or *Apply as Drafts*.
 - **No files at all:** *Copy Current Model* / *Copy All Models* puts the data on the clipboard for Excel. Edit it, then paste it back.
 - Every import is logged in the audit trail as **Model Imported**.
 

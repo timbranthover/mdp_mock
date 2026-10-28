@@ -197,7 +197,7 @@
   var ST = null;
   function fresh(access) {
     var m = access ? C.findModel(access) : null;
-    return { bulk: !m, m: m, grid: null, header: false, roles: [], text: '', source: null, replace: null, skip: false, filter: 'all', fix: {}, drop: {}, open: {}, editing: false };
+    return { bulk: !m, m: m, grid: null, header: false, roles: [], text: '', source: null, replace: null, filter: 'all', fix: {}, drop: {}, open: {}, editing: false };
   }
 
   /* ---------------- compute preview ---------------- */
@@ -227,12 +227,12 @@
       groups[key].push({ i: gi, r: r });
     });
     order.forEach(function (key) {
-      var m = ST.bulk ? acc[key] : ST.m, g = { key: key, m: m, rows: [], notes: [], problem: null };
+      var m = ST.bulk ? acc[key] : ST.m, g = { key: key, m: m, rows: [], notes: [], problem: null, idx: groups[key].map(function (x) { return [x.i, String(x.r[cId] || (cId2 > -1 ? x.r[cId2] : '') || '').trim()]; }) };
       out.groups.push(g);
       if (!m) {
         g.problem = key === '(blank)' ? 'Rows without an Access code' : 'Model ' + key + ' not found';
         var toks = groups[key].map(function (x) { return String(x.r[cId] || (cId2 > -1 ? x.r[cId2] : '') || '').trim(); }).filter(Boolean);
-        g.notes.push(groups[key].length + ' row' + (groups[key].length === 1 ? '' : 's') + ' skipped' + (toks.length ? ': ' + toks.slice(0, 8).join(', ') + (toks.length > 8 ? '…' : '') : ''));
+        g.notes.push(groups[key].length + ' row' + (groups[key].length === 1 ? '' : 's') + (toks.length ? ': ' + toks.slice(0, 8).join(', ') + (toks.length > 8 ? '…' : '') : '') + '. Correct the Access code in your sheet, or remove these rows from the import.');
         g.counts = { changed: 0, new: 0, removed: 0, error: 0, same: 0 }; g.changes = 0; g.ready = false;
         return;
       }
@@ -292,7 +292,7 @@
       rows.push({ kind: 'cash', t: CASH, cur: base.w[CASH] || 0, nw: cash });
       vals.forEach(function (v) {
         if (v.status === 'cashp') return;
-        if (v.err) { rows.push({ kind: ST.skip ? 'skipped' : 'error', i: v.i, token: v.token, err: v.err, sugg: v.sugg, t: v.t }); return; }
+        if (v.err) { rows.push({ kind: 'error', i: v.i, token: v.token, err: v.err, sugg: v.sugg, t: v.t }); return; }
         if (v.status === 'merged') { rows.push({ kind: 'merged', i: v.i, t: v.t, token: v.token, into: v.into, nw: v.w }); return; }
         var cur = base.w[v.t] || 0;
         rows.push({ kind: cur > EPS ? (Math.abs(v.w - cur) > EPS ? 'changed' : 'same') : 'new', i: v.i, t: v.t, token: v.token, cur: cur, nw: fin[v.t], how: v.how, combined: v.combined, warn: v.warn, tt: v.tt, dnb: v.dnb, dns: v.dns, notes: v.notes });
@@ -318,7 +318,7 @@
   };
   var CHIP = {
     changed: ['', ''], same: ['muted', 'No change'], new: ['new', 'New'], removed: ['rem', 'Removed'], error: ['err', 'Fix needed'],
-    skipped: ['muted', 'Skipped'], merged: ['info', 'Combined'], cash: ['muted', 'Auto'], skip: ['muted', 'Skipped']
+    merged: ['info', 'Combined'], cash: ['muted', 'Auto']
   };
   function chg(cur, nw) {
     var v = r3(nw - cur);
@@ -328,11 +328,11 @@
   }
   function rowHtml(g, r) {
     var s = r.t && SEC[r.t], price = r.t === CASH ? 1 : s ? s.price : null, chip = CHIP[r.kind] || ['', ''], extra = '';
-    if (r.kind === 'error' || r.kind === 'skipped') {
-      var rmLink = r.kind === 'error' ? '<button class="imp-rm-l" data-imp="drop" data-row="' + r.i + '" data-tok="' + esc(r.token) + '">Remove row</button>' : '';
+    if (r.kind === 'error') {
+      var rmLink = '<button class="imp-rm-l" data-imp="drop" data-row="' + r.i + '" data-tok="' + esc(r.token) + '">Remove row</button>';
       var sugg = r.sugg && r.sugg.length ? '<div class="imp-sugg">' + (r.kind === 'error' && /Invalid/.test(r.err) ? 'Did you mean ' : '') + r.sugg.map(function (t) { return '<button data-imp="sugg" data-row="' + r.i + '" data-t="' + esc(t) + '" title="' + esc(SEC[t].desc) + '">' + esc(t) + '</button>'; }).join('') + '</div>' : '';
       return '<tr class="k-' + r.kind + '"><td><input class="imp-fix" data-row="' + r.i + '" value="' + esc(r.token) + '" spellcheck="false" aria-label="Fix security for row ' + (r.i + 1) + '"></td>' +
-        '<td colspan="5"><div class="imp-err">' + esc(r.err) + (r.kind === 'skipped' ? ' <em>(skipped)</em>' : '') + '</div>' + (sugg || rmLink ? '<div class="imp-sugg">' + (sugg ? sugg.replace(/^<div class="imp-sugg">|<\/div>$/g, '') : '') + (sugg && rmLink ? '<span class="or">or</span>' : '') + rmLink + '</div>' : '') + '</td>' +
+        '<td colspan="5"><div class="imp-err">' + esc(r.err) + '</div>' + (sugg || rmLink ? '<div class="imp-sugg">' + (sugg ? sugg.replace(/^<div class="imp-sugg">|<\/div>$/g, '') : '') + (sugg && rmLink ? '<span class="or">or</span>' : '') + rmLink + '</div>' : '') + '</td>' +
         '<td><span class="chip ' + chip[0] + '">' + chip[1] + '</span><span class="rown">Row ' + (r.i + 1) + '</span></td>' + RM(r) + '</tr>';
     }
     if (r.kind === 'merged') {
@@ -353,7 +353,7 @@
   function visible(r) {
     var f = ST.filter;
     if (f === 'all') return true;
-    if (f === 'error') return r.kind === 'error' || r.kind === 'skipped';
+    if (f === 'error') return r.kind === 'error';
     if (f === 'changed') return r.kind === 'changed' || r.kind === 'cash';
     return r.kind === f;
   }
@@ -416,7 +416,7 @@
     }
     // summary + filters
     var cnt = { changed: 0, new: 0, removed: 0, error: 0 };
-    all.forEach(function (r) { if (r.kind in cnt) cnt[r.kind]++; if (r.kind === 'skipped') cnt.error++; });
+    all.forEach(function (r) { if (r.kind in cnt) cnt[r.kind]++; });
     var f = function (k, label, n, cls) { return '<button class="fchip ' + (cls || '') + (ST.filter === k ? ' on' : '') + '" data-imp="filter" data-v="' + k + '">' + label + ' <b>' + n + '</b></button>'; };
     h += '<div class="imp-sum"><div class="fchips">' + f('all', 'All', all.length) + f('changed', 'Changed', cnt.changed) + f('new', 'New', cnt.new, 'c-new') + f('removed', 'Removed', cnt.removed, 'c-rem') + (cnt.error ? f('error', 'Errors', cnt.error, 'c-err') : '') + '</div>';
     if (!ST.bulk && g0.m) h += '<div class="imp-tot">Total <b>100.000%</b><span class="sep"></span>USD Cash <b class="' + (g0.cash < -EPS ? 'neg' : '') + '">' + g0.cash.toFixed(3) + '%</b> <em>auto</em></div>';
@@ -425,8 +425,9 @@
     var errN = all.filter(function (r) { return r.kind === 'error'; }).length;
     var dropped = Object.keys(ST.drop);
     if (dropped.length) h += '<div class="imp-note">' + dropped.length + ' row' + (dropped.length === 1 ? '' : 's') + ' removed from this import: <b>' + dropped.map(function (k) { return esc(ST.drop[k]); }).join(', ') + '</b>. <button data-imp="undrop">Undo</button></div>';
-    if (errN) h += '<div class="imp-alert">' + C.I.errBang + '<span><b>' + errN + ' row' + (errN === 1 ? ' needs' : 's need') + ' attention.</b> Fix the security, pick a suggestion, remove the row, or</span><button class="btn btn-text" data-imp="skip">Skip ' + (errN === 1 ? 'it' : 'them') + '</button></div>';
-    else if (ST.skip && cnt.error) h += '<div class="imp-note">' + cnt.error + ' error row' + (cnt.error === 1 ? ' is' : 's are') + ' skipped. <button data-imp="unskip">Undo skip</button></div>';
+    if (errN) h += '<div class="imp-alert">' + C.I.errBang + '<span><b>' + errN + ' row' + (errN === 1 ? ' needs' : 's need') + ' attention.</b> Fix the security in the row, pick a suggestion, or remove the row.</span></div>';
+    var probs = G.filter(function (g) { return g.problem; });
+    if (ST.bulk && probs.length) h += '<div class="imp-alert">' + C.I.errBang + '<span><b>' + probs.length + ' model' + (probs.length === 1 ? ' needs' : 's need') + ' attention:</b> ' + probs.map(function (g) { return esc(g.m ? g.m.access : g.key) + ' (' + esc(g.problem.split(',')[0]) + ')'; }).join(', ') + '. Fix the sheet, or remove the model from this import.</span></div>';
     G.forEach(function (g) { g.notes.forEach(function (n) { if (!ST.bulk) h += '<div class="imp-note">' + esc(n) + '</div>'; }); });
     if (!ST.bulk && g0.problem) h += '<div class="imp-alert">' + C.I.errBang + '<span><b>' + esc(g0.problem) + '.</b> USD Cash cannot go below 0.000%.</span></div>';
     // table
@@ -436,9 +437,10 @@
       var rows = g.rows.filter(visible);
       if (ST.bulk) {
         var open = ST.open[g.key] != null ? ST.open[g.key] : (G.length <= 3 || (!!g.counts && g.counts.error > 0) || /^Over 100%/.test(g.problem || ''));
-        var stat = g.problem ? '<span class="chip err">Skipped</span><span class="rown">' + esc(g.problem) + '</span>' :
+        var rmG = '<button class="imp-rm-l" data-imp="dropgroup" data-v="' + esc(g.key) + '">Remove from import</button>';
+        var stat = g.problem ? '<span class="chip err">Fix needed</span><span class="rown">' + esc(g.problem) + '</span><div class="g-act">' + rmG + '</div>' :
           g.counts.error ? '<span class="chip err">Fix needed</span>' : g.ready ? '<span class="chip ok">Ready</span><span class="rown">' + g.changes + ' change' + (g.changes === 1 ? '' : 's') + ' &middot; ' + (g.replace ? 'Replace' : 'Update') + ' &middot; Cash ' + g.cash.toFixed(3) + '%</span>' : '<span class="chip muted">No changes</span>';
-        h += '<tbody class="g' + (open ? ' open' : '') + '"><tr class="g-h" data-imp="group" data-v="' + esc(g.key) + '"><td colspan="6"><span class="gchev">' + I2.chev + '</span><b>' + esc(g.m ? g.m.access : g.key) + '</b>' + (g.m ? ' <span class="gname">' + esc(g.m.name) + '</span>' : '') + '</td><td colspan="2">' + stat + '</td></tr>';
+        h += '<tbody class="g' + (open ? ' open' : '') + '"><tr class="g-h" data-imp="group" data-v="' + esc(g.key) + '"><td colspan="4"><span class="gchev">' + I2.chev + '</span><b>' + esc(g.m ? g.m.access : g.key) + '</b>' + (g.m ? ' <span class="gname">' + esc(g.m.name) + '</span>' : '') + '</td><td colspan="4" class="g-stat">' + stat + '</td></tr>';
         if (open) { h += rows.map(function (r) { return rowHtml(g, r); }).join(''); g.notes.forEach(function (n) { h += '<tr class="g-note"><td></td><td colspan="7">' + esc(n) + '</td></tr>'; }); }
         h += '</tbody>';
       } else h += '<tbody>' + (rows.length ? rows.map(function (r) { return rowHtml(g, r); }).join('') : '<tr class="empty-row"><td colspan="8">Nothing in this filter</td></tr>') + '</tbody>';
@@ -453,19 +455,20 @@
       var g = res.groups[0];
       if (!why && g) {
         if (g.problem) why = g.problem;
-        else if (g.counts.error) why = 'Fix, remove or skip ' + g.counts.error + ' error row' + (g.counts.error === 1 ? '' : 's') + ' to continue';
+        else if (g.counts.error) why = 'Fix or remove ' + g.counts.error + ' error row' + (g.counts.error === 1 ? '' : 's') + ' to continue';
         else if (!g.ready) why = 'Nothing would change';
         l = why ? '<span class="st-warn">' + esc(why) + '</span>' : '<span class="st-ok">' + I2.check + 'Ready &middot; ' + g.changes + ' change' + (g.changes === 1 ? '' : 's') + ' will be applied to the grid. You still review and Submit.</span>';
       }
       btns = '<button class="btn btn-text" data-imp="close">Cancel</button><button class="btn btn-black' + (why ? ' is-disabled' : '') + '" data-imp="apply"' + (why ? ' data-tip="' + esc(why) + '" data-tip-anchor' : '') + '>Apply to Model</button>';
     } else {
-      var ready = res.groups.filter(function (g) { return g.ready; }), skipped = res.groups.filter(function (g) { return g.problem; }).length;
+      var ready = res.groups.filter(function (g) { return g.ready; }), probs = res.groups.filter(function (g) { return g.problem; });
       var errs = res.groups.reduce(function (a, g) { return a + (g.counts ? g.counts.error : 0); }, 0);
       if (!why) {
-        if (errs) why = 'Fix, remove or skip ' + errs + ' error row' + (errs === 1 ? '' : 's') + ' first';
+        if (errs) why = 'Fix or remove ' + errs + ' error row' + (errs === 1 ? '' : 's') + ' first';
+        else if (probs.length) why = 'Resolve ' + probs.length + ' model' + (probs.length === 1 ? '' : 's') + ' first: ' + probs.map(function (g) { return g.m ? g.m.access : g.key; }).join(', ');
         else if (!ready.length) why = 'No models are ready to update';
       }
-      l = why ? '<span class="st-warn">' + esc(why) + '</span>' : '<span class="st-ok">' + I2.check + ready.length + ' model' + (ready.length === 1 ? '' : 's') + ' ready' + (skipped ? ' &middot; ' + skipped + ' will be skipped' : '') + '</span>';
+      l = why ? '<span class="st-warn">' + esc(why) + '</span>' : '<span class="st-ok">' + I2.check + ready.length + ' model' + (ready.length === 1 ? '' : 's') + ' ready</span>';
       var dis = why ? ' is-disabled" data-tip="' + esc(why) + '" data-tip-anchor' : '"';
       btns = '<button class="btn btn-text" data-imp="close">Cancel</button><button class="btn btn-tan' + dis + ' data-imp="drafts">Apply as Drafts</button><button class="btn btn-black' + dis + ' data-imp="submitall">Submit ' + (ready.length || '') + ' Model' + (ready.length === 1 ? '' : 's') + '</button>';
     }
@@ -493,7 +496,7 @@
     grid = trimGrid(grid || []);
     if (!grid.length) { C.toast('Nothing to import. Copy rows from Excel and paste again.'); return; }
     var d = detect(grid, ST.bulk);
-    ST.grid = grid; ST.header = d.header; ST.roles = d.roles; ST.source = source; ST.text = text || ''; ST.fix = {}; ST.drop = {}; ST.skip = false; ST.filter = 'all'; ST.replace = null; ST.open = {};
+    ST.grid = grid; ST.header = d.header; ST.roles = d.roles; ST.source = source; ST.text = text || ''; ST.fix = {}; ST.drop = {}; ST.filter = 'all'; ST.replace = null; ST.open = {};
     ST.editing = false;
     render();
   }
@@ -575,12 +578,11 @@
       if (submit) { var r = C.applySubmit(g.m, 'Bulk import · ' + src + ' · ' + (g.replace ? 'Replace model' : 'Update listed only')); ts = r.ts; total += r.changes.filter(function (c) { return c.ticker !== CASH; }).length; }
       else { C.touch(g.m); C.logEvent(g.m, { ts: C.nowStamp(), event: 'Model Imported', user: C.persona.user, details: 'Bulk import · ' + src + ' · draft' }); total += g.changes; }
     });
-    var skipped = lastRes.groups.filter(function (g) { return g.problem; }).length;
     C.save(); close(); C.route();
     var n = ready.length;
     C.successCard({ name: n + ' model' + (n === 1 ? '' : 's') + ' · ' + ready.map(function (g) { return g.m.access; }).slice(0, 6).join(', ') + (n > 6 ? '…' : ''), access: '' },
       submit ? (n === 1 ? 'Model Approved' : n + ' Models Approved') : 'Drafts Ready',
-      submit ? total + ' weight change' + (total === 1 ? '' : 's') + (skipped ? ' · ' + skipped + ' skipped' : '') : 'Set to In Progress. Open each to review and Submit', ts || C.nowStamp());
+      submit ? total + ' weight change' + (total === 1 ? '' : 's') : 'Set to In Progress. Open each to review and Submit', ts || C.nowStamp());
   }
   function copyText(text, msg) {
     var done = function () { C.toast(msg, 'ok'); };
@@ -658,8 +660,11 @@
       case 'copy': copyModels(); break;
       case 'mode': ST.replace = v === '' ? null : v === '1'; render(true); break;
       case 'filter': ST.filter = v; render(); break;
-      case 'skip': ST.skip = true; render(true); break;
-      case 'unskip': ST.skip = false; render(true); break;
+      case 'dropgroup': {
+        var gg = lastRes && lastRes.groups.filter(function (x) { return x.key === el.getAttribute('data-v'); })[0];
+        if (gg) gg.idx.forEach(function (p) { ST.drop[p[0]] = gg.key + ' ' + (p[1] || 'row ' + (p[0] + 1)); });
+        e.stopPropagation(); C.hideTip(); render(true); break;
+      }
       case 'drop': ST.drop[el.getAttribute('data-row')] = el.getAttribute('data-tok') || ('Row ' + (+el.getAttribute('data-row') + 1)); C.hideTip(); render(true); break;
       case 'undrop': ST.drop = {}; render(true); break;
       case 'group': ST.open[v] = !el.parentNode.classList.contains('open'); render(true); break;
