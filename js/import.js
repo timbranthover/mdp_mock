@@ -699,15 +699,34 @@
 
   function editable(t) { return t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable); }
   /* Paste anywhere: inside the drawer, or on Model Details / Model List (opens the drawer). */
+  /* Read what was pasted. Excel puts the cells on the clipboard as text AND as a picture;
+     text always wins. HTML (some browsers / Excel Online) is the fallback; real files come last. */
+  function htmlToTsv(html) {
+    var doc = new DOMParser().parseFromString(html, 'text/html'), rows = doc.querySelectorAll('tr');
+    return Array.prototype.map.call(rows, function (tr) {
+      return Array.prototype.map.call(tr.querySelectorAll('td,th'), function (c) { return c.textContent.replace(/\s+/g, ' ').trim(); }).join('\t');
+    }).join('\n');
+  }
+  function clipPayload(cd) {
+    if (!cd) return null;
+    var text = cd.getData('text/plain') || '';
+    if (!text.trim()) { var html = cd.getData('text/html'); if (html && /<tr/i.test(html)) text = htmlToTsv(html); }
+    if (text.trim()) return { text: text };
+    var files = Array.prototype.filter.call(cd.files || [], function (f) { return /\.(xlsx|xlsm|csv|tsv|txt)$/i.test(f.name); });
+    if (files.length) return { file: files[0] };
+    if (cd.files && cd.files.length) return { image: true };
+    return null;
+  }
   document.addEventListener('paste', function (e) {
     if (editable(e.target) || document.querySelector('#modal-root .modal')) return;
-    var text = e.clipboardData && e.clipboardData.getData('text/plain');
-    var file = e.clipboardData && e.clipboardData.files && e.clipboardData.files[0];
-    if (!text && !file) return;
-    if (ST) { e.preventDefault(); if (file) ingestFile(file); else ingestText(text); return; }
-    var m = C.currentModel();
-    if (m && C.onDetails()) { e.preventDefault(); open(m.access, file ? { file: file } : { text: text }); }
-    else if (document.getElementById('ml-table')) { e.preventDefault(); open(null, file ? { file: file } : { text: text }); }
+    var pl = clipPayload(e.clipboardData);
+    if (!pl) return;
+    var where = ST ? 'drawer' : (C.currentModel() && C.onDetails()) ? 'details' : document.getElementById('ml-table') ? 'list' : null;
+    if (!where) return;
+    e.preventDefault();
+    if (pl.image) { C.toast('That paste was only a picture. In Excel, select the cells, press Ctrl+C, then paste here.'); return; }
+    if (ST) { if (pl.file) ingestFile(pl.file); else ingestText(pl.text); return; }
+    open(where === 'details' ? C.currentModel().access : null, pl);
   });
   /* Drag a file anywhere */
   var dz = document.getElementById('imp-dropzone'), dragDepth = 0;
