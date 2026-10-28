@@ -251,7 +251,8 @@
    */
   var M = {
     t12: '12th Street Asset Management', af: 'American Funds Models', bk: 'Blackrock Models',
-    cg: 'Capital Group Models', pl: 'Polen Capital Management, LLC', vg: 'Vanguard Models'
+    cg: 'Capital Group Models', pl: 'Polen Capital Management, LLC', vg: 'Vanguard Models',
+    cio: 'UBS CIO Building Blocks'
   };
   var DEFS = [
     [M.t12, '12th Street Tactical Multi-Asset - Bal', 'N601', '', 'Dynamic', 192, 84.16, 'multi', 'In Progress', '2026-10-27 12:19:17.500213', 'qa', '2026-10-08 14:09:00', 'qa'],
@@ -367,7 +368,7 @@
   }
 
   function buildModels() {
-    return DEFS.map(function (d) {
+    var models = DEFS.map(function (d) {
       var m = {
         manager: d[0], name: d[1], access: d[2], swp: d[3], type: d[4], accounts: d[5], aum: d[6], kind: d[7],
         status: d[8], modified: d[9], modifiedUser: MDP_USERS[d[10]], confirmed: d[11], confirmedUser: d[12] ? MDP_USERS[d[12]] : null,
@@ -388,12 +389,71 @@
       m.events = buildEvents(m);
       return m;
     });
+    return models.concat(buildBlocks(models));
+  }
+
+  /* ---------- Building Blocks (UBS CIO parent strategies built from third-party SMA models) ----------
+   * A block owns only its allocation across underlying models ("sleeves"). Its holdings are the
+   * consolidated look-through model: SUM(sleeve allocation x security weight in that sleeve).
+   * Underlying models stay separate. Their managers never see the block.
+   */
+  function consolidate(sleeves, byAccess) {
+    var acc = {}, contrib = {};
+    sleeves.forEach(function (s) {
+      var m = byAccess[s.access];
+      if (!m || !(s.alloc > 0)) return;
+      m.holdings.forEach(function (h) {
+        var c = s.alloc * h.weight / 100;
+        acc[h.ticker] = (acc[h.ticker] || 0) + c;
+        (contrib[h.ticker] = contrib[h.ticker] || []).push({ access: s.access, w: h.weight, alloc: s.alloc, c: c });
+      });
+    });
+    var rows = Object.keys(acc).filter(function (t) { return t !== 'USD Cash'; }).map(function (t) { return { ticker: t, weight: +acc[t].toFixed(3) }; })
+      .filter(function (r) { return r.weight > 0; })
+      .sort(function (a, b) { return a.ticker < b.ticker ? -1 : 1; });
+    var used = rows.reduce(function (a, r) { return a + r.weight; }, 0);
+    var allocTot = sleeves.reduce(function (a, s) { return a + (byAccess[s.access] ? (+s.alloc || 0) : 0); }, 0);
+    rows.unshift({ ticker: 'USD Cash', weight: +(allocTot - used).toFixed(3) });
+    return { holdings: rows, contrib: contrib };
+  }
+  var BLOCK_DEFS = [
+    ['B101', 'UBS US Equity Building Block', 'Static', 214, 61.42, [['N611', 50], ['N529', 30], ['N622', 20]], '2026-10-01 09:12:44.210331', '2026-10-15 10:02:18.553201'],
+    ['B102', 'UBS Global Multi-Asset Building Block', 'Static', 96, 28.75, [['N622', 40], ['N533', 30], ['N612', 20], ['N539', 10]], '2026-10-02 14:31:05.118842', '2026-10-09 11:46:30.774410']
+  ];
+  function buildBlocks(models) {
+    var by = {}; models.forEach(function (m) { by[m.access] = m; });
+    return BLOCK_DEFS.map(function (d) {
+      var b = {
+        manager: M.cio, name: d[1], access: d[0], swp: '', type: d[2], accounts: d[3], aum: d[4], kind: 'block', block: true,
+        status: 'Approved', modified: d[7], modifiedUser: MDP_USERS.admin, confirmed: null, confirmedUser: null,
+        minimum: '$250,000', emails: '', tlh: '', pending: null, communications: [],
+        sleeves: d[5].map(function (x) { return { access: x[0], alloc: x[1] }; }),
+        users: [['MDC, ART', 'mdp.qa.user03@ubs.com', ''], ['CIO Portfolio Construction', 'cio.blocks.qa@ubs.com', '']]
+      };
+      b.holdings = consolidate(b.sleeves, by).holdings;
+      b.snapshots = {};
+      ['2026-10-21', '2026-10-14'].forEach(function (dt, i) { b.snapshots[dt] = jitter(b.holdings, hashStr(b.access + dt) + i); });
+      var ev = [], seq = 0;
+      ev.push({ ts: d[6], event: 'Building Block Created', user: MDP_USERS.admin, details: 'Created with ' + b.sleeves.length + ' underlying strategies', seq: seq++ });
+      var created = b.sleeves.map(function (s) { return { ticker: s.access, from: 0, to: s.alloc }; });
+      ev.push({ ts: d[6], event: 'Building Block Approved', user: MDP_USERS.admin, details: 'Initial allocation approved and published', changes: created, seq: seq++ });
+      ev.push({ ts: d[7], event: 'Building Block Updated By Admin', user: MDP_USERS.admin, details: 'Allocation review', changes: created.slice(0, 2).map(function (c, i) { return { ticker: c.ticker, from: c.to + (i ? -2.5 : 2.5), to: c.to }; }), seq: seq++ });
+      b.sleeves.forEach(function (s) {
+        var m = by[s.access];
+        if (m && m.modified > d[6]) ev.push({ ts: m.modified, event: 'Underlying Model Updated', user: 'System', details: s.access + ' (' + m.name + ') updated by ' + m.modifiedUser + '. Consolidated model recalculated and auto-published.', seq: seq++ });
+      });
+      ev.sort(function (a, b2) { return a.ts < b2.ts ? -1 : a.ts > b2.ts ? 1 : a.seq - b2.seq; });
+      b.events = ev;
+      return b;
+    });
   }
 
   window.MDP_SEED = {
-    version: 4,
-    managers: [M.bk, M.af, M.pl, M.cg, M.vg, M.t12], // order used in the Model List header
-    managerOptions: [M.t12, M.af, M.bk, M.cg, M.pl, M.vg], // order used in the Manager filter
+    version: 5,
+    managers: [M.bk, M.af, M.pl, M.cg, M.vg, M.t12, M.cio], // order used in the Model List header
+    managerOptions: [M.t12, M.af, M.bk, M.cg, M.pl, M.vg, M.cio], // order used in the Manager filter
+    blockManager: M.cio,
+    consolidate: consolidate,
     securities: SECURITIES,
     securitiesById: BY_ID,
     buildModels: buildModels,

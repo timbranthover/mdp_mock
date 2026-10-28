@@ -5,6 +5,7 @@ This repo is a desktop-only digital twin of the UBS Model Delivery Portal (Money
 ## Domain context
 - These are **SMA investment models**: one model = a set of target **weights** (%) that is traded across many client accounts. Everything is expressed in weights. Never add share counts, quantities, market values or dollar amounts to model editing or import. They don't apply to a model.
 - USD Cash is the residual that keeps a model at 100%.
+- **Building Blocks** (`js/blocks.js`): UBS CIO parent models made of underlying SMA models. Consolidated weight = SUM(allocation × security weight). One level only. Underlying models stay separate: managers never see blocks (persona views filter them out). Approving an underlying model auto-recalculates every block using it.
 
 ## Always keep the Improvements log current
 `js/improvements.js` lists everything that is **net new vs. the production app** (shown in-app at `#/improvements`, exportable to Excel).

@@ -449,10 +449,10 @@
     var locked = lockedBy(m);
     return '<tr>' +
       '<td data-tip="' + esc(m.manager) + '" data-tip-trunc>' + esc(m.manager) + '</td>' +
-      '<td data-tip="' + esc(m.name) + '" data-tip-trunc><a class="lnk" href="#/model/' + encodeURIComponent(m.access) + '/info/details"' + (locked ? ' data-locked="' + esc(m.access) + '"' : '') + '>' + esc(m.name) + '</a></td>' +
+      '<td data-tip="' + esc(m.name) + '" data-tip-trunc>' + (m.block ? '<span class="bb-tag" data-tip="UBS CIO Building Block: ' + m.sleeves.length + ' underlying strategies" data-tip-anchor>BB</span>' : '') + '<a class="lnk" href="#/model/' + encodeURIComponent(m.access) + '/info/details"' + (locked ? ' data-locked="' + esc(m.access) + '"' : '') + '>' + esc(m.name) + '</a></td>' +
       '<td class="b">' + esc(m.access) + '</td>' +
       '<td class="b">' + (m.swp ? esc(m.swp) : '-') + '</td>' +
-      '<td>' + esc(m.type) + '</td>' +
+      '<td>' + esc(m.block ? 'Building Block' : m.type) + '</td>' +
       '<td class="r">' + num(m.accounts, 0) + '</td>' +
       '<td class="r">' + num(m.aum, 2) + '</td>' +
       '<td>' + esc(m.modifiedUser) + '</td>' +
@@ -498,6 +498,7 @@
   function effStatus(m) { return m.draft && m.draft.live && m.draft.prev ? m.draft.prev.status : m.status; }
   function reasonFor(m) {
     var st = effStatus(m), ev, e;
+    if (m.block && m.status !== 'In Progress') return B.reason(m);
     if (st === 'Rejected') {
       ev = eventsDesc(m); e = ev.filter(function (x) { return x.event === 'Model Rejected'; })[0];
       return { kind: 'rej', title: 'Rejected', text: e ? e.details.replace(/^Rejected for the following reason\(s\):\s*/i, '').trim() : 'No reason recorded.', ts: e && e.ts, user: e && e.user };
@@ -520,14 +521,17 @@
     if (!r) return '';
     return (r.ts && (r.kind === 'rej' || r.kind === 'attn') ? r.title + ' ' + fmt.conf(r.ts) + (r.user ? ' by ' + r.user : '') + ': ' : '') + r.text;
   }
-  function whyHtml(m) {
+  function whyHtml(m) { return whyCore(m) + B.memberHtml(m); }
+  function whyCore(m) {
     var r = reasonFor(m);
     if (!r || r.kind === 'lock' || r.kind === 'mine') return '';
     var A = ' data-acc="' + esc(m.access) + '"', acts = '';
     if (r.kind === 'attn' && r.ticker && m.holdings.concat(m.draft ? m.draft.rows.map(function (x) { return { ticker: x.ticker }; }) : []).some(function (h) { return h.ticker === r.ticker; }))
       acts += '<button data-act="why-focus" data-t="' + esc(r.ticker) + '"' + A + '>Show ' + esc(r.ticker) + '</button>';
+    if (r.sleeve) acts += '<button data-act="open-model" data-to="' + esc(r.sleeve) + '">Open ' + esc(r.sleeve) + '</button>';
     if (r.kind !== 'new') acts += '<button data-act="audit"' + A + '>View Audit Trail</button>';
     var editing = m.draft && m.draft.live;
+    if (r.sleeve) return '<div class="why why-attn" role="status">' + I.attn + '<div class="why-t"><b>' + esc(r.title) + '</b><span class="why-x">' + esc(r.text) + '</span></div><div class="why-a">' + acts + '</div></div>';
     var tail = r.kind === 'rej' ? (editing ? 'Submitting your edits will clear this status.' : 'Correct the model and Submit to clear this status.') :
       r.kind === 'attn' ? (editing ? 'Submitting your edits will clear this status.' : '') : '';
     return '<div class="why why-' + r.kind + '" role="status">' + (r.kind === 'rej' ? I.err : r.kind === 'attn' ? I.attn : I.newI) +
@@ -543,7 +547,8 @@
     return '<table class="chg-tbl"><thead><tr><th>Ticker</th><th>Description</th><th class="r">Previous Weight</th><th class="r">New Weight</th><th class="r">Change</th></tr></thead><tbody>' +
       changes.map(function (c) {
         var s = SEC[c.ticker], d = round3(c.to - c.from);
-        return '<tr><td>' + esc(c.ticker) + '</td><td>' + esc(s ? s.desc : c.ticker === 'USD Cash' ? 'USD Cash' : '') + '</td><td class="r">' + c.from.toFixed(3) + '%</td><td class="r">' + c.to.toFixed(3) + '%</td><td class="r ' + (d > EPS ? 'pos' : d < -EPS ? 'neg' : '') + '">' + (d > EPS ? '+' : '') + d.toFixed(3) + '%</td></tr>';
+        var bm = !s && byAccess[c.ticker];
+        return '<tr><td>' + esc(c.ticker) + '</td><td>' + esc(s ? s.desc : c.ticker === 'USD Cash' ? 'USD Cash' : bm ? bm.name + ' (allocation)' : '') + '</td><td class="r">' + c.from.toFixed(3) + '%</td><td class="r">' + c.to.toFixed(3) + '%</td><td class="r ' + (d > EPS ? 'pos' : d < -EPS ? 'neg' : '') + '">' + (d > EPS ? '+' : '') + d.toFixed(3) + '%</td></tr>';
       }).join('') + '</tbody></table>';
   }
   function showAudit(m) {
@@ -581,6 +586,7 @@
       '<div class="mf"><span class="k">Modified</span><span class="v">' + fmt.full(m.modified) + '</span></div>' +
       '<div class="mf"><span class="k">Confirmed</span><span class="v">' + (m.confirmed ? fmt.full(m.confirmed) : 'N/A') + '</span></div>' +
       '<div class="mf"><span class="k">Status</span><span class="v">' + statusHtml(m.status) + '</span></div>' +
+      (m.block ? '<div class="mf"><span class="k">Model Type</span><span class="v">Building Block &middot; ' + m.sleeves.length + ' underlying</span></div>' : '') +
       '<div class="meta-tools"><button class="icon-btn" data-act="model-export" data-acc="' + esc(m.access) + '" data-tip="Download" data-tip-anchor>' + I.download + '</button><button class="icon-btn" data-act="print" data-tip="Print" data-tip-anchor>' + I.print + '</button></div>';
   }
 
@@ -593,7 +599,8 @@
       return;
     }
     if (!SUBS[tab]) tab = 'info';
-    if (!SUBS[tab].some(function (s) { return s[0] === sub; })) sub = SUBS[tab][0][0];
+    var subs = m.block && tab === 'info' ? B.SUBS : SUBS[tab];
+    if (!subs.some(function (s) { return s[0] === sub; })) sub = subs[0][0];
     var base = '#/model/' + encodeURIComponent(access) + '/';
     app.innerHTML =
       '<div class="banner detail"><a class="crumb" href="#/">' + I.left + 'Model List</a><h1>Model Delivery Portal</h1>' + improvementsBtn() + '<button class="btn-support">Support</button></div>' +
@@ -604,10 +611,11 @@
         '</section>' +
         '<section class="card d-body">' +
           '<div id="d-why">' + whyHtml(m) + '</div>' +
-          '<div class="tabs small">' + SUBS[tab].map(function (s) { return '<a href="' + base + tab + '/' + s[0] + '" class="' + (s[0] === sub ? 'on' : '') + '">' + s[1] + '</a>'; }).join('') + '</div>' +
+          '<div class="tabs small">' + subs.map(function (s) { return '<a href="' + base + tab + '/' + s[0] + '" class="' + (s[0] === sub ? 'on' : '') + '">' + s[1] + '</a>'; }).join('') + '</div>' +
           '<div id="d-content"></div>' +
         '</section>' +
       '</div>';
+    if (m.block && (sub === 'details' || sub === 'holdings')) { (sub === 'details' ? B.renderComposition : B.renderHoldings)(m, $('#d-content')); return; }
     ({ details: renderModelDetails, options: renderOptions, snapshot: renderSnapshot, today: renderToday, sma: renderSma, performance: renderPerformance, profile: renderProfile })[sub](m, $('#d-content'));
   }
 
@@ -917,8 +925,9 @@
     logEvent(m, { ts: ts, event: isAdmin() ? 'Model Updated By Admin' : 'Model Updated', user: persona.user, details: '-', changes: df.changes });
     logEvent(m, { ts: ts, event: 'Model Approved', user: persona.user, details: '-', changes: df.changes });
     delete m.draft;
+    var blocks = B.onUnderlyingApproved(m, ts);
     save();
-    return { changes: df.changes, ts: ts };
+    return { changes: df.changes, ts: ts, blocks: blocks };
   }
   function changeSummary(changes) {
     var moved = changes.filter(function (c) { return c.ticker !== CASH; });
@@ -930,8 +939,9 @@
   function doSubmit(m) {
     var res = applySubmit(m);
     route();
-    successCard(m, 'Model Approved', changeSummary(res.changes), res.ts);
+    successCard(m, 'Model Approved', changeSummary(res.changes) + blocksNote(res.blocks), res.ts);
   }
+  function blocksNote(bl) { return bl && bl.length ? ' · Building Block ' + bl.map(function (b) { return b.access; }).join(', ') + ' auto-updated' : ''; }
   /* CONFIRM: once per visit to the model screen. */
   var confirmedHere = null;
   function confirmModel(m) {
@@ -1251,6 +1261,7 @@
         break;
       }
       case 'model-export':
+        if (m && m.block) { B.exportBlock(m); break; }
         if (m) {
           // same importable columns first (so it pastes straight back), reference columns greyed at the end
           var rowsX = getDraft(m).rows.filter(function (r) { return r.ticker !== CASH; }).map(function (r) {
@@ -1293,6 +1304,7 @@
       case 'md-confirm': confirmModel(m); break;
       case 'submit-anyway': closeModal(); doSubmit(m); break;
       case 'card-close': closeCard(); break;
+      case 'open-model': location.hash = '#/model/' + encodeURIComponent(el.getAttribute('data-to')) + '/info/details'; break;
       case 'tlh-submit': {
         var inp = $('#tlh'), val = inp.value.trim().toUpperCase();
         if (!val) { toast('Please enter a replacement security'); break; }
@@ -1350,6 +1362,8 @@
     if (h[0] === 'improvements') { current.access = null; confirmedHere = null; renderImprovements(); document.title = 'Model Delivery Portal - Improvements'; return; }
     if (h[0] !== 'model' || decodeURIComponent(h[1] || '') !== confirmedHere) confirmedHere = null;
     if (h[0] !== 'model' || decodeURIComponent(h[1] || '') !== S.onlyChanged) S.onlyChanged = null;
+    B.leave(h[0] === 'model' ? decodeURIComponent(h[1] || '') : null);
+    B.refreshStatuses();
     if (h[0] === 'model' && h[1]) {
       current.access = decodeURIComponent(h[1]);
       renderDetail(current.access, h[2] || 'info', h[3] || '');
@@ -1364,6 +1378,14 @@
     if (skipRoute) { skipRoute = false; return; }
     route(); window.scrollTo(0, 0);
   });
+  /* Building Blocks (js/blocks.js) */
+  var B = window.MDPBlocksInit({
+    S: S, SEED: SEED, SEC: SEC, CASH: CASH, EPS: EPS, I: I, esc: esc, num: num, round3: round3, fmt: fmt, byAccess: byAccess,
+    persona: persona, isAdmin: isAdmin, displayName: displayName, todayISO: todayISO, nowStamp: nowStamp, eventsDesc: eventsDesc,
+    statusHtml: statusHtml, setBtn: setBtn, toast: toast, modal: modal, closeModal: closeModal, successCard: successCard,
+    logEvent: logEvent, save: save, route: function () { route(); }, currentModel: function () { return currentModel(); },
+    refreshMeta: function (m) { var a = $('#d-meta'); if (a) a.innerHTML = metaHtml(m); var w = $('#d-why'); if (w) w.innerHTML = whyHtml(m); }
+  });
   /* Internal API for js/import.js */
   window.MDPCore = {
     SEC: SEC, SEED: SEED, CASH: CASH, EPS: EPS, I: I, esc: esc, num: num, round3: round3, fmt: fmt, todayISO: todayISO, EOD: EOD,
@@ -1371,7 +1393,7 @@
     models: function () { return scopedModels(); }, findModel: findModel, lockedBy: lockedBy, currentModel: currentModel,
     getDraft: getDraft, rowOf: rowOf, newRow: newRow, touch: touch, discardDraft: discardDraft, syncCash: syncCash,
     renderMdTable: renderMdTable, updateTotals: updateTotals, checkSecurity: checkSecurity, resolveSecurity: resolveSecurity,
-    applySubmit: applySubmit, changeSummary: changeSummary, successCard: successCard, logEvent: logEvent, nowStamp: nowStamp,
+    applySubmit: applySubmit, changeSummary: changeSummary, blocksNote: blocksNote, successCard: successCard, logEvent: logEvent, nowStamp: nowStamp,
     parseCsv: parseCsv, save: save, route: route, onDetails: function () { return !!document.getElementById('md-table'); }
   };
   route();

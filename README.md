@@ -46,6 +46,16 @@ A right-side drawer replaces "pick a file". Open it with **Import** on Model Det
 - **No files at all:** *Copy Current Model* puts the data on the clipboard for Excel. Edit it, then paste it back.
 - Every import is logged in the audit trail as **Model Imported**.
 
+## Building Blocks (proposed, UBS CIO view)
+
+A Building Block is a UBS CIO strategy made of existing third-party SMA models (B101, B102 under *UBS CIO Building Blocks*).
+
+- **Composition** tab: add underlying strategies by Access code or name, set allocations (total must be 100%; *Scale To 100%* helps), then Submit / Confirm / Clear like Model Details. Each underlying model's status, last update and stale flag (14+ days) are shown.
+- **Consolidated Holdings** tab: the look-through model (allocation × weight in each underlying model), with summary tiles, a 5% concentration flag, overlap count, and a per-security drill-down of contributions. Unsubmitted allocation edits are previewed.
+- **Automatic updates:** when an underlying model is approved, every block using it is recalculated and published, logged as *Underlying Model Updated* in the block's audit trail.
+- **Status flows up:** an underlying model that is Rejected or Needs Attention puts the block in Needs Attention, with a link to that model.
+- **Managers never see blocks.** Underlying models stay separate; the UBS view shows "Used in a Building Block" on them (try `?persona=polen`, where nothing changes).
+
 ## Proposed improvements (default) vs. today's behavior
 
 The twin shows proposed UX by default. Add `?ux=current` to see production behavior side by side.
@@ -73,5 +83,6 @@ These behaviors weren't visible in the screenshots, so they are best guesses:
 - `js/data.js` — mock strategies, securities, users, snapshots
 - `js/app.js` — routing, screens, interactions
 - `js/xlsx.js` — dependency-free Excel writer/reader (works without CDN access)
+- `js/blocks.js` — Building Blocks (composition, consolidated holdings, auto-recalculation)
 - `js/import.js` — Import drawer (paste/drop/type, detection, preview, undo)
 - `js/improvements.js` — improvements log (net new vs. production)
