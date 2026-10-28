@@ -216,15 +216,7 @@
   }
   tickClock(); setInterval(tickClock, 1000);
 
-  /* ================= CSV helpers ================= */
-  function csvCell(v) { v = String(v == null ? '' : v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }
-  function downloadCsv(name, rows) {
-    var blob = new Blob([rows.map(function (r) { return r.map(csvCell).join(','); }).join('\r\n')], { type: 'text/csv' });
-    var a = document.createElement('a');
-    a.href = URL.createObjectURL(blob); a.download = name;
-    document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
-  }
+  /* ================= CSV import helper ================= */
   function parseCsv(text) {
     return text.split(/\r?\n/).filter(function (l) { return l.trim(); }).map(function (line) {
       var out = [], cur = '', q = false;
@@ -722,7 +714,8 @@
       +cashRow.nw < -EPS ? 'Allocations exceed 100%. USD Cash would be ' + (+cashRow.nw).toFixed(3) + '%. Reduce other weights to submit.' :
       off ? 'Weights must total 100.000% to submit. Current total: ' + total.toFixed(3) + '%' :
       !df.dirty ? 'No changes to submit' : '';
-    var confWhy = df.dirty ? 'Confirm is available only when the model has no changes. Submit or clear your changes first.' : '';
+    var confWhy = confirmedHere === m.access ? 'Model already confirmed at ' + fmt.conf(m.confirmed) + '.' :
+      df.dirty ? 'Confirm is available only when the model has no changes. Submit or clear your changes first.' : '';
     setBtn($('#md-submit'), subWhy);
     setBtn($('#md-confirm'), confWhy);
   }
@@ -807,30 +800,38 @@
     toast(t + ' deleted. ' + w.toFixed(3) + '% moved to USD Cash.', 'ok');
   }
 
+  /* SUBMIT: warn (but allow) when securities are set to 0.000%, then apply + show the approval card. */
   function submitModel(m) {
     var b = $('#md-submit');
     if (b && b.classList.contains('is-disabled')) return;
-    if (isAdmin()) {
-      modal({
-        cls: 'reason', title: 'Reason For Update',
-        body: '<label class="lbl" for="reason">As an admin, provide a reason for this update. It is recorded in the audit trail.</label><textarea id="reason" rows="4" maxlength="250" autofocus></textarea>',
-        foot: '<button class="btn btn-text" data-act="close-modal">Cancel</button><button class="btn btn-tan" data-act="reason-submit" data-acc="' + esc(m.access) + '">Submit</button>'
-      });
-      $('#reason').addEventListener('keydown', function (e) { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) $('[data-act="reason-submit"]').click(); });
-    } else doSubmit(m, null);
+    var zero = getDraft(m).rows.filter(function (r) { return r.ticker !== CASH && Math.abs(+r.nw || 0) < EPS; });
+    if (!zero.length) { doSubmit(m); return; }
+    var list = zero.map(function (r) { var s = SEC[r.ticker]; return '<li><b>' + esc(r.ticker) + '</b><span>' + esc(s ? s.desc : '') + '</span><em>' + r.weight.toFixed(3) + '% &rarr; 0.000%</em></li>'; }).join('');
+    modal({
+      cls: 'warnz', icon: '<span class="mh-ic">' + I.warn + '</span>',
+      title: zero.length === 1 ? 'Security Set To 0.000%' : zero.length + ' Securities Set To 0.000%',
+      body: '<p>The following ' + (zero.length === 1 ? 'security has' : 'securities have') + ' a new weight of 0.000% and will be removed from the model when you submit.</p><ul class="zero-list">' + list + '</ul>',
+      foot: '<button class="btn btn-text" data-act="close-modal">Go Back</button><button class="btn btn-tan" data-act="submit-anyway" data-acc="' + esc(m.access) + '" autofocus>Submit Anyway</button>'
+    });
   }
-  function doSubmit(m, reason) {
+  function doSubmit(m) {
     var d = getDraft(m), df = diff(m, d), ts = nowStamp();
     m.holdings = d.rows.filter(function (r) { return +r.nw > EPS || r.ticker === CASH; }).map(function (r) { return { ticker: r.ticker, weight: round3(+r.nw) }; });
     m.holdings.sort(function (a, b) { return a.ticker === CASH ? -1 : b.ticker === CASH ? 1 : a.ticker < b.ticker ? -1 : 1; });
     m.status = 'Approved'; m.modified = ts; m.modifiedUser = persona.user;
     m.snapshots[todayISO()] = m.holdings.map(function (h) { return { ticker: h.ticker, weight: h.weight }; });
-    logEvent(m, { ts: ts, event: reason != null ? 'Model Updated By Admin' : 'Model Updated', user: persona.user, details: reason != null ? 'Admin reason for update: ' + reason : '-', changes: df.changes });
+    logEvent(m, { ts: ts, event: isAdmin() ? 'Model Updated By Admin' : 'Model Updated', user: persona.user, details: '-', changes: df.changes });
     logEvent(m, { ts: ts, event: 'Model Approved', user: persona.user, details: '-', changes: df.changes });
     delete m.draft;
     save(); route();
-    toast('Model submitted successfully', 'ok');
+    var moved = df.changes.filter(function (c) { return c.ticker !== CASH; });
+    var removed = moved.filter(function (c) { return c.to < EPS; }).length, added = moved.filter(function (c) { return c.from < EPS; }).length;
+    var parts = [moved.length + ' weight change' + (moved.length === 1 ? '' : 's')];
+    if (added) parts.push(added + ' added'); if (removed) parts.push(removed + ' removed');
+    successCard(m, 'Model Approved', parts.join(' · '), ts);
   }
+  /* CONFIRM: once per visit to the model screen. */
+  var confirmedHere = null;
   function confirmModel(m) {
     var b = $('#md-confirm');
     if (b && b.classList.contains('is-disabled')) return;
@@ -841,7 +842,32 @@
     m.snapshots[todayISO()] = m.holdings.map(function (h) { return { ticker: h.ticker, weight: h.weight }; });
     logEvent(m, { ts: ts, event: 'Confirmed', user: persona.user, details: 'Model Confirmed' });
     save(); route();
-    toast('Model confirmed successfully', 'ok');
+    confirmedHere = m.access;
+    updateTotals(m);
+    successCard(m, 'Model Confirmed', 'Current weights confirmed', ts);
+  }
+  /* Success card: clear, unobtrusive, dismisses itself (pauses while hovered). */
+  var cardTimer = null;
+  function successCard(m, title, detail, ts) {
+    var root = $('#success-root');
+    clearTimeout(cardTimer);
+    root.innerHTML = '<div class="okcard" role="status" aria-live="polite"><div class="okc-ic">' + I.ok + '</div><div class="okc-b">' +
+      '<div class="okc-t">' + esc(title) + '</div><div class="okc-n">' + esc(m.name) + ' <span>' + esc(m.access) + '</span></div>' +
+      '<div class="okc-d">' + esc(detail) + ' &middot; ' + fmt.conf(ts).split(' ').slice(1).join(' ') + '</div>' +
+      '<div class="okc-a"><button data-act="audit" data-acc="' + esc(m.access) + '">View Audit Trail</button><button data-act="card-close">Dismiss</button></div></div>' +
+      '<button class="x" data-act="card-close" aria-label="Dismiss">&times;</button><i class="okc-bar"></i></div>';
+    var card = root.firstChild, left = 5000, started = Date.now();
+    function arm() { started = Date.now(); card.querySelector('.okc-bar').style.animationPlayState = 'running'; cardTimer = setTimeout(closeCard, left); }
+    card.addEventListener('mouseenter', function () { clearTimeout(cardTimer); left -= Date.now() - started; card.querySelector('.okc-bar').style.animationPlayState = 'paused'; });
+    card.addEventListener('mouseleave', arm);
+    arm();
+  }
+  function closeCard() {
+    clearTimeout(cardTimer);
+    var c = $('#success-root .okcard');
+    if (!c) return;
+    c.classList.add('out');
+    setTimeout(function () { if (c.parentNode) c.remove(); }, 180);
   }
   /* ---- Excel template (mirrors the production DYNAMIC/STATIC_MODEL_Template "Import" sheet) ---- */
   var TEMPLATE_COLS = [
@@ -1071,10 +1097,11 @@
       }
       case 'close-modal': closeModal(); break;
       case 'print': window.print(); break;
-      case 'list-export':
-        downloadCsv('Model_List_' + todayISO() + '.csv', [['Manager', 'Strategy Name', 'Access', 'SWP/AAP', 'Model Type', 'Accounts', 'AUM(M)', 'Modified User', 'Modified Date', 'Confirmed User', 'Confirmed Date', 'Status']].concat(
-          listRows().map(function (x) { return [x.manager, x.name, x.access, x.swp || '-', x.type, x.accounts, x.aum.toFixed(2), x.modifiedUser, fmt.listMod(x.modified), x.confirmedUser || '-', x.confirmed ? fmt.conf(x.confirmed) : '-', x.status]; })));
+      case 'list-export': {
+        var LC = [{ h: 'Manager', w: 30 }, { h: 'Strategy Name', w: 44 }, { h: 'Access', w: 9 }, { h: 'SWP/AAP', w: 10 }, { h: 'Model Type', w: 12 }, { h: 'Accounts', w: 10 }, { h: 'AUM(M)', w: 11, fmt: 'price' }, { h: 'Modified User', w: 20 }, { h: 'Modified Date', w: 24 }, { h: 'Confirmed User', w: 20 }, { h: 'Confirmed Date', w: 20 }, { h: 'Status', w: 15 }];
+        window.MDPXlsx.write('Model_List_' + todayISO() + '.xlsx', 'Model List', LC, listRows().map(function (x) { return [x.manager, x.name, x.access, x.swp || '-', x.type, x.accounts, x.aum, x.modifiedUser, fmt.listMod(x.modified), x.confirmedUser || '-', x.confirmed ? fmt.conf(x.confirmed) : '-', x.status]; }));
         break;
+      }
       case 'model-export':
         if (m) {
           var rowsX = getDraft(m).rows.map(function (r) {
@@ -1101,11 +1128,8 @@
       case 'md-clear': discardDraft(m); route(); break;
       case 'md-submit': submitModel(m); break;
       case 'md-confirm': confirmModel(m); break;
-      case 'reason-submit': {
-        var reason = $('#reason').value.trim();
-        if (!reason) { $('#reason').classList.add('bad'); $('#reason').focus(); toast('Please enter a reason for the update'); break; }
-        closeModal(); doSubmit(m, reason); break;
-      }
+      case 'submit-anyway': closeModal(); doSubmit(m); break;
+      case 'card-close': closeCard(); break;
       case 'tlh-submit': {
         var inp = $('#tlh'), val = inp.value.trim().toUpperCase();
         if (!val) { toast('Please enter a replacement security'); break; }
@@ -1159,6 +1183,7 @@
     // drop untouched drafts so stale weights never leak between visits
     S.models.forEach(function (m) { if (m.draft && !m.draft.live) delete m.draft; });
     var h = location.hash.replace(/^#\/?/, '').split('/');
+    if (h[0] !== 'model' || decodeURIComponent(h[1] || '') !== confirmedHere) confirmedHere = null;
     if (h[0] === 'model' && h[1]) {
       current.access = decodeURIComponent(h[1]);
       renderDetail(current.access, h[2] || 'info', h[3] || '');

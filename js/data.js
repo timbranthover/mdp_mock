@@ -396,7 +396,6 @@
     managerOptions: [M.t12, M.af, M.bk, M.cg, M.pl, M.vg], // order used in the Manager filter
     securities: SECURITIES,
     securitiesById: BY_ID,
-    users: MDP_USERS,
     buildModels: buildModels,
     tradeTypes: ['-', 'Buy', 'Sell', 'Buy/Sell (Trade To Target)', 'Adjustment (No Trade)'],
     tradeToTarget: 'Buy/Sell (Trade To Target)',

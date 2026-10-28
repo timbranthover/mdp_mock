@@ -22,8 +22,8 @@ Plain HTML/CSS/JS — no build step. Deploy the repo root as a static site on Ve
 - **Excel**: Download Template gives a real `.xlsx` (`STATIC_MODEL_Template` / `DYNAMIC_MODEL_Template`, sheet *Import*) with the production columns, dropdowns for DoNotBuy/DoNotSell/TradeType, and a frozen header. The download icon on a model exports the same format filled with current weights. Import reads it back (or a CSV).
 - **Model Details**: add by Ticker/CUSIP/CINS (comma-separated; UCITS models require CINS), edit New Weight (live Weight Change and Total), Trade Type, Do Not Buy/Sell, Notes, **Trade All To Target**, **Import** (CSV), **Download Template**.
   - Editing a model sets it to *In Progress* and locks it. Other users get "Model Being Edited By Another User".
-  - **SUBMIT** is disabled (with a tooltip saying why) until the total is exactly 100.000% and something changed. Admins enter a reason. It logs *Model Updated By Admin* + *Model Approved* and applies the weights.
-  - **CONFIRM** is available only when there are no changes. It stamps Confirmed user/date.
+  - **SUBMIT** is disabled (with a tooltip saying why) until the total is exactly 100.000% and something changed. Securities left at 0.000% trigger a warning that names them (Go Back / Submit Anyway). Success shows a *Model Approved* card (auto-dismisses after 5s, pauses on hover, links to the audit trail).
+  - **CONFIRM** is available only when there are no changes, and only once per visit to the screen. It stamps Confirmed user/date.
   - **DELETE** removes a row and moves its weight to USD Cash (current production behavior).
   - **CLEAR** discards edits and releases the lock.
 - **Model Snapshot**: date picker; shows "Model snapshot not saved for selected date" when none exists (every model has 10/21/2026 seeded).
@@ -47,7 +47,6 @@ The twin shows proposed UX by default. Add `?ux=current` to see production behav
 
 These behaviors weren't visible in the screenshots, so they are best guesses:
 
-- Admin "reason for update" prompt on SUBMIT (inferred from the audit trail).
 - "Most Recent Profile" opens a summary modal.
 - Import replaces the model target (securities not in the file go to 0).
 

@@ -242,13 +242,8 @@ table.grid { border-collapse: collapse; width: 100%; table-layout: fixed; }
 .md-grid .cbx { width: 13px; height: 13px; accent-color: #333; }
 .md-grid tr.added td:first-child { box-shadow: inset 3px 0 0 #8fb4c3; }
 .md-grid .pos { color: var(--ok); } .md-grid .neg { color: var(--err); }
-.md-grid .rm { color: #999; font-size: 14px; padding: 0 4px; }
-.md-grid .rm:hover { color: var(--err); }
-.md-total { display: flex; align-items: center; height: 28px; font-weight: 700; font-size: 11px; position: relative; }
-.md-total .tv.bad { color: var(--err); }
 .md-buttons { display: flex; justify-content: flex-end; gap: 10px; margin-top: 4px; }
 .md-buttons .btn { min-width: 58px; }
-.pending-note { font-size: 11px; color: #8a5a00; background: #fdf3df; border: 1px solid #f0d9a8; padding: 5px 10px; margin-bottom: 8px; display: inline-block; }
 
 /* options */
 .opt-wrap { padding: 6px 0 20px; }
@@ -262,10 +257,6 @@ table.grid { border-collapse: collapse; width: 100%; table-layout: fixed; }
 .snap-bar .ctl { width: 200px; font-weight: 400; letter-spacing: 0; font-size: 11.5px; }
 .snap-scroll { height: calc(100vh - 440px); min-height: 300px; margin: 0; }
 .snap-grid td { height: 34px; }
-.snap-grid tbody tr, .snap-grid tbody tr:nth-child(even) { background: transparent; }
-.snap-grid td { border-bottom: 0; }
-.snap-foot { display: grid; border-top: 1px solid #555; height: 30px; align-items: center; font-weight: 700; font-size: 10.5px; }
-.snap-foot.hl { background: #9fbfc8; }
 .no-rows { text-align: center; padding-top: 150px; font-size: 11.5px; color: #333; }
 
 /* communication */
@@ -364,11 +355,6 @@ table.grid { border-collapse: collapse; width: 100%; table-layout: fixed; }
 .chg-tbl .r { text-align: right; }
 .chg-tbl .pos { color: var(--ok); } .chg-tbl .neg { color: var(--err); }
 .modal.audit .modal-f { border-top: 0; padding: 12px 22px 16px; }
-.modal.reason { width: 520px; }
-.modal.reason .modal-b { padding: 16px 18px; }
-.modal.reason .lbl { font-size: 12px; display: block; margin-bottom: 8px; color: #333; }
-.modal.reason textarea { width: 100%; border: 1px solid #8a8a8a; padding: 8px 10px; font: inherit; font-size: 12.5px; resize: vertical; }
-.modal.reason textarea.bad { border-color: var(--err); }
 .comm-grid td.det { white-space: nowrap; }
 
 /* ---------- snapshot UX (proposed) ---------- */
@@ -405,3 +391,41 @@ table.grid { border-collapse: collapse; width: 100%; table-layout: fixed; }
 .legend i { width: 5px; height: 5px; border-radius: 50%; background: #1d6e8f; }
 .md-grid input.nw.flash { animation: cashflash .6s ease-out; }
 @keyframes cashflash { from { background: #e3eef2; } to { background: #fff; } }
+
+/* ---------- success card ---------- */
+#success-root { position: fixed; top: 80px; left: 50%; transform: translateX(-50%); z-index: 350; }
+.okcard { position: relative; display: flex; gap: 14px; width: 440px; background: #fff; border-left: 4px solid var(--ok); box-shadow: 0 10px 30px rgba(0,0,0,.2); padding: 14px 40px 14px 16px; overflow: hidden; animation: okin .22s cubic-bezier(.2,.8,.3,1); }
+.okcard.out { animation: okout .18s ease-in forwards; }
+.okc-ic svg { width: 26px; height: 26px; }
+.okc-b { flex: 1; min-width: 0; }
+.okc-t { font-size: 16px; font-weight: 700; margin-bottom: 4px; }
+.okc-n { font-size: 12px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.okc-n span { font-weight: 400; color: #666; margin-left: 4px; }
+.okc-d { font-size: 11.5px; color: #555; margin-top: 3px; }
+.okc-a { display: flex; gap: 16px; margin-top: 10px; }
+.okc-d { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.okc-a button { font-size: 9.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #2d5a6b; }
+.okc-a button:hover { text-decoration: underline; }
+.okcard .x { position: absolute; top: 10px; right: 12px; font-size: 18px; color: #777; line-height: 1; }
+.okc-bar { position: absolute; left: 0; bottom: 0; height: 3px; width: 100%; background: var(--ok); opacity: .55; transform-origin: left; animation: okbar 5s linear forwards; }
+@keyframes okin { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
+@keyframes okout { to { opacity: 0; transform: translateY(-6px); } }
+@keyframes okbar { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+
+/* ---------- zero-weight warning ---------- */
+.modal.warnz { width: 560px; }
+.modal.warnz .mh-ic svg { width: 20px; height: 20px; }
+.modal.warnz .modal-b { padding: 16px 18px 6px; }
+.modal.warnz p { margin: 0 0 12px; font-size: 12.5px; line-height: 1.5; }
+.zero-list { list-style: none; margin: 0 0 10px; padding: 0; border: 1px solid var(--line-2); max-height: 240px; overflow: auto; }
+.zero-list li { display: grid; grid-template-columns: 80px 1fr auto; gap: 10px; padding: 7px 10px; font-size: 12px; border-bottom: 1px solid var(--line-2); }
+.zero-list li:nth-child(even) { background: #f8f8f8; }
+.zero-list li:last-child { border-bottom: 0; }
+.zero-list span { color: #555; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.zero-list em { font-style: normal; color: var(--err); font-variant-numeric: tabular-nums; }
+
+/* ---------- snapshot row striping ---------- */
+.snap-grid tbody tr { background: #fff; }
+.snap-grid tbody tr:nth-child(even) { background: #efefed; }
+.snap-grid tbody tr:hover { background: var(--hover); }
+.snap-grid td { border-bottom: 1px solid #e4e4e2; }
