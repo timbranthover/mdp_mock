@@ -696,13 +696,30 @@
     var sc = $('.md-scroll'); $('#md-foot').scrollLeft = sc.scrollLeft;
     updateTotals(m);
   }
+  /* Auto-cash: USD Cash absorbs every change to the other weights so the model stays at 100%.
+     Raising a weight draws from cash; if cash would go negative it is flagged and Submit is blocked. */
+  function syncCash(m, paint) {
+    var d = getDraft(m), cash = rowOf(d, CASH), others = 0;
+    for (var i = 0; i < d.rows.length; i++) { var r = d.rows[i]; if (r !== cash && !isNaN(+r.nw)) others += +r.nw || 0; }
+    cash.nw = round3(100 - others);
+    if (Math.abs(cash.nw) < EPS) cash.nw = 0;
+    if (!paint) return;
+    var inp = $('input.nw[data-t="' + CASH + '"]');
+    if (inp) {
+      if (document.activeElement !== inp) inp.value = cash.nw.toFixed(3);
+      inp.classList.toggle('bad', badWeight(cash.nw));
+      inp.classList.remove('flash'); void inp.offsetWidth; inp.classList.add('flash');
+      inp.closest('tr').querySelector('[data-chg]').innerHTML = chgHtml(cash);
+    }
+  }
   /* Recompute total + button states. O(rows); runs on every keystroke. */
   function updateTotals(m) {
     var d = getDraft(m), total = draftTotal(d), off = Math.abs(total - 100) > EPS;
     var te = $('#md-total');
     if (te) { te.textContent = 'Total: ' + total.toFixed(3) + '%'; te.className = off ? 'neg' : ''; te.setAttribute('data-tip', off ? 'Weights must total 100.000% (' + (total > 100 ? 'over by ' : 'short by ') + Math.abs(round3(total - 100)).toFixed(3) + '%)' : ''); te.toggleAttribute('data-tip-anchor', off); }
-    var df = diff(m, d), invalid = d.rows.some(function (r) { return badWeight(r.nw); });
+    var df = diff(m, d), cashRow = rowOf(d, CASH), invalid = d.rows.some(function (r) { return r !== cashRow && badWeight(r.nw); });
     var subWhy = invalid ? 'Each new weight must be a number between 0 and 100' :
+      +cashRow.nw < -EPS ? 'Allocations exceed 100%. USD Cash would be ' + (+cashRow.nw).toFixed(3) + '%. Reduce other weights to submit.' :
       off ? 'Weights must total 100.000% to submit. Current total: ' + total.toFixed(3) + '%' :
       !df.dirty ? 'No changes to submit' : '';
     var confWhy = df.dirty ? 'Confirm is available only when the model has no changes. Submit or clear your changes first.' : '';
@@ -727,6 +744,7 @@
         row.nw = el.value.trim() === '' ? '' : (isNaN(+el.value) ? el.value : +el.value);
         el.classList.toggle('bad', badWeight(row.nw));
         el.closest('tr').querySelector('[data-chg]').innerHTML = chgHtml(row);
+        if (row.ticker !== CASH) syncCash(m, true);
         touch(m); updateTotals(m);
       } else if ((t = el.getAttribute('data-notes'))) { rowOf(d, t).notes = el.value; touch(m); updateTotals(m); }
     });
@@ -825,28 +843,61 @@
     save(); route();
     toast('Model confirmed successfully', 'ok');
   }
-  function importCsv(m, text) {
-    var rows = parseCsv(text);
+  /* ---- Excel template (mirrors the production DYNAMIC/STATIC_MODEL_Template "Import" sheet) ---- */
+  var TEMPLATE_COLS = [
+    { h: 'Security (Required, if CUSIP is blank)', w: 24, required: 1, key: 'security' },
+    { h: 'CUSIP (Required, if Security is blank)', w: 24, required: 1, key: 'cusip' },
+    { h: 'Description', w: 34, key: 'desc' },
+    { h: 'InvestmentType', w: 16, key: 'itype' },
+    { h: 'Price', w: 11, fmt: 'price', key: 'price' },
+    { h: 'Weight (Required, Blank defaults to Zero)', w: 22, required: 1, fmt: 'weight', key: 'weight' },
+    { h: 'Difference', w: 12, fmt: 'weight', key: 'diff' },
+    { h: 'DoNotBuy', w: 11, list: ['Y', 'N'], key: 'dnb' },
+    { h: 'DoNotSell', w: 11, list: ['Y', 'N'], key: 'dns' },
+    { h: 'TradeType (Required)', w: 28, required: 1, list: SEED.tradeTypes.slice(1), key: 'tt' }
+  ];
+  function downloadTemplate(m) {
+    var name = (m && m.type ? m.type.toUpperCase() : 'MODEL') + '_MODEL_Template.xlsx';
+    window.MDPXlsx.write(name, 'Import', TEMPLATE_COLS, [], { blankRows: 60, title: name.replace('.xlsx', '') });
+  }
+  function investmentType(s) {
+    if (!s) return '';
+    if (s.group === 'afunds') return 'Mutual Fund';
+    if (/ETF|ETC|TRUST|SPDR|SHARES/.test(s.desc)) return 'ETF';
+    return 'Equity';
+  }
+  /* Accepts the Excel template (header names) or a simple CSV (ticker, weight, ...). */
+  function importRows(m, rows, fname) {
+    rows = (rows || []).filter(function (r) { return r && r.some(function (v) { return String(v).trim() !== ''; }); });
     if (!rows.length) { toast('The selected file is empty'); return; }
-    if (isNaN(+rows[0][1])) rows.shift(); // header row
-    var d = getDraft(m), seen = {}, bad = [];
-    rows.forEach(function (r) {
-      var tok = r[0], w = +r[1];
+    var hdr = rows[0].map(function (h) { return String(h).toLowerCase().replace(/\s+/g, ''); }), idx = {};
+    function find(re) { for (var i = 0; i < hdr.length; i++) if (re.test(hdr[i])) return i; return -1; }
+    idx.sec = find(/^(security|ticker)/); idx.cusip = find(/^cusip/); idx.w = find(/^(weight|newweight)/);
+    idx.tt = find(/^tradetype/); idx.dnb = find(/^donotbuy/); idx.dns = find(/^donotsell/); idx.notes = find(/^notes/);
+    if (idx.w > -1) rows.shift();
+    else { idx = { sec: 0, cusip: -1, w: 1, tt: 2, dnb: 3, dns: 4, notes: 5 }; if (isNaN(+rows[0][1])) rows.shift(); }
+    var d = getDraft(m), seen = {}, bad = [], cashSet = false;
+    function val(r, i) { return i > -1 && r[i] != null ? String(r[i]).trim() : ''; }
+    rows.forEach(function (r, n) {
+      var tok = val(r, idx.sec) || val(r, idx.cusip), wRaw = val(r, idx.w), w = wRaw === '' ? 0 : +wRaw;
+      if (!tok) return;
       var t = /^usd ?cash$/i.test(tok) ? CASH : resolveSecurity(tok);
-      if (!t || isNaN(w) || (SEC[t] && SEC[t].error)) { bad.push(tok); return; }
+      if (!t || isNaN(w) || w < 0 || (SEC[t] && SEC[t].error)) { bad.push('row ' + (n + 2) + ' (' + tok + ')'); return; }
       var row = rowOf(d, t);
       if (!row) { row = newRow(t, 0); row.added = true; d.rows.push(row); }
       row.nw = round3(w);
-      if (r[2] && SEED.tradeTypes.indexOf(r[2]) > -1) row.tt = r[2];
-      if (r[3]) row.dnb = /^(y|yes|true|1)$/i.test(r[3]);
-      if (r[4]) row.dns = /^(y|yes|true|1)$/i.test(r[4]);
-      if (r[5]) row.notes = r[5];
+      if (t === CASH) cashSet = true;
+      var tt = val(r, idx.tt); if (tt && SEED.tradeTypes.indexOf(tt) > -1) row.tt = tt;
+      var b = val(r, idx.dnb); if (b) row.dnb = /^(y|yes|true|1)$/i.test(b);
+      var s = val(r, idx.dns); if (s) row.dns = /^(y|yes|true|1)$/i.test(s);
+      var nt = val(r, idx.notes); if (nt) row.notes = nt;
       seen[t] = 1;
     });
-    d.rows.forEach(function (r) { if (!seen[r.ticker]) r.nw = 0; });
+    d.rows.forEach(function (r) { if (!seen[r.ticker] && r.ticker !== CASH) r.nw = 0; });
+    if (!cashSet) syncCash(m, false);
     touch(m); renderMdTable(m);
-    if (bad.length) toast('Skipped unrecognized rows: ' + bad.slice(0, 6).join(', ') + (bad.length > 6 ? '…' : ''));
-    toast('Imported ' + Object.keys(seen).length + ' securities. Review and SUBMIT.', 'ok');
+    if (bad.length) toast('Skipped ' + bad.length + ' invalid row(s): ' + bad.slice(0, 4).join(', ') + (bad.length > 4 ? '…' : ''));
+    toast('Imported ' + Object.keys(seen).length + ' securities from ' + fname + '. Review and SUBMIT.', 'ok');
   }
 
   /* ---------- Model Options ---------- */
@@ -1025,8 +1076,13 @@
           listRows().map(function (x) { return [x.manager, x.name, x.access, x.swp || '-', x.type, x.accounts, x.aum.toFixed(2), x.modifiedUser, fmt.listMod(x.modified), x.confirmedUser || '-', x.confirmed ? fmt.conf(x.confirmed) : '-', x.status]; })));
         break;
       case 'model-export':
-        if (m) downloadCsv(m.access + '_Model_' + todayISO() + '.csv', [['Ticker', 'Description', 'CUSIP', 'Price ($)', 'Weight', 'New Weight', 'Weight Change', 'Trade Type', 'Do Not Buy', 'Do Not Sell', 'Notes']].concat(
-          getDraft(m).rows.map(function (r) { var s = secFor(r.ticker) || {}; return [r.ticker, s.desc, s.id, (s.price || 0).toFixed(2), r.weight.toFixed(3), (+r.nw || 0).toFixed(3), round3((+r.nw || 0) - r.weight).toFixed(3), r.ticker === CASH ? '' : r.tt, r.dnb ? 'Y' : 'N', r.dns ? 'Y' : 'N', r.notes]; })));
+        if (m) {
+          var rowsX = getDraft(m).rows.map(function (r) {
+            var sx = secFor(r.ticker) || {}, nwv = +r.nw || 0;
+            return [r.ticker, r.ticker === CASH ? '' : sx.id, sx.desc, r.ticker === CASH ? 'Cash' : investmentType(sx), sx.price || 0, round3(nwv), round3(nwv - r.weight), r.ticker === CASH ? '' : (r.dnb ? 'Y' : 'N'), r.ticker === CASH ? '' : (r.dns ? 'Y' : 'N'), r.ticker === CASH || r.tt === '-' ? '' : r.tt];
+          });
+          window.MDPXlsx.write(m.access + '_' + m.type.toUpperCase() + '_MODEL_' + todayISO() + '.xlsx', 'Import', TEMPLATE_COLS, rowsX, { blankRows: rowsX.length + 20, title: m.name });
+        }
         break;
       case 'md-sort': {
         var cur = S.detailSort[acc] || { key: 'ticker', dir: 1 };
@@ -1037,13 +1093,11 @@
       case 'md-delete': deleteRow(m, el.getAttribute('data-t')); break;
       case 'md-trade-all': {
         var dd = getDraft(m);
-        dd.rows.forEach(function (r) { if (r.ticker !== CASH) r.tt = SEED.tradeToTarget; });
-        touch(m); renderMdTable(m); toast('Trade Type set to ' + SEED.tradeToTarget + ' for all securities', 'ok'); break;
+        dd.rows.forEach(function (r) { if (r.ticker !== CASH) { r.tt = SEED.tradeToTarget; r.notes = 'Fully Rebalance'; } });
+        touch(m); renderMdTable(m); toast('All securities set to ' + SEED.tradeToTarget + ' · Notes: Fully Rebalance', 'ok'); break;
       }
       case 'md-import': $('#import-file').value = ''; $('#import-file').click(); break;
-      case 'md-template':
-        downloadCsv('MDP_Model_Import_Template.csv', [['Ticker/CUSIP/CINS/SEDOL', 'New Weight', 'Trade Type', 'Do Not Buy', 'Do Not Sell', 'Notes']]);
-        break;
+      case 'md-template': downloadTemplate(m); break;
       case 'md-clear': discardDraft(m); route(); break;
       case 'md-submit': submitModel(m); break;
       case 'md-confirm': confirmModel(m); break;
@@ -1085,9 +1139,14 @@
   $('#import-file').addEventListener('change', function (e) {
     var f = e.target.files[0], m = currentModel();
     if (!f || !m) return;
-    var rd = new FileReader();
-    rd.onload = function () { importCsv(m, String(rd.result)); };
-    rd.readAsText(f);
+    if (/\.csv$/i.test(f.name)) {
+      var rd = new FileReader();
+      rd.onload = function () { importRows(m, parseCsv(String(rd.result)), f.name); };
+      rd.readAsText(f);
+    } else {
+      f.arrayBuffer().then(window.MDPXlsx.read).then(function (rows) { importRows(m, rows, f.name); })
+        .catch(function (err) { toast('Could not read ' + f.name + ': ' + (err && err.message ? err.message : 'unsupported file')); });
+    }
   });
 
   /* ================= router ================= */

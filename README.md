@@ -17,6 +17,9 @@ Plain HTML/CSS/JS — no build step. Deploy the repo root as a static site on Ve
 
 - **Manager\* filter**: searchable multi-select with Select All. The filter count pill updates as you select; the grid only changes on **APPLY** (same as production). **CLEAR** resets.
 - **Modified / Confirmed Date Range** pickers and **Status** filter.
+- **Auto-cash**: changing any weight rebalances USD Cash automatically, so the model stays at 100%. If allocations exceed 100%, cash goes negative (red) and SUBMIT explains why.
+- **Trade All To Target** sets every row to *Buy/Sell (Trade To Target)* and Notes to *Fully Rebalance*.
+- **Excel**: Download Template gives a real `.xlsx` (`STATIC_MODEL_Template` / `DYNAMIC_MODEL_Template`, sheet *Import*) with the production columns, dropdowns for DoNotBuy/DoNotSell/TradeType, and a frozen header. The download icon on a model exports the same format filled with current weights. Import reads it back (or a CSV).
 - **Model Details**: add by Ticker/CUSIP/CINS (comma-separated; UCITS models require CINS), edit New Weight (live Weight Change and Total), Trade Type, Do Not Buy/Sell, Notes, **Trade All To Target**, **Import** (CSV), **Download Template**.
   - Editing a model sets it to *In Progress* and locks it. Other users get "Model Being Edited By Another User".
   - **SUBMIT** is disabled (with a tooltip saying why) until the total is exactly 100.000% and something changed. Admins enter a reason. It logs *Model Updated By Admin* + *Model Approved* and applies the weights.
@@ -54,3 +57,4 @@ These behaviors weren't visible in the screenshots, so they are best guesses:
 - `css/styles.css` — all styling
 - `js/data.js` — mock strategies, securities, users, snapshots
 - `js/app.js` — routing, screens, interactions
+- `js/xlsx.js` — dependency-free Excel writer/reader (works without CDN access)
