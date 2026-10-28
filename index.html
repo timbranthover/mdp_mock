@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=1280">
 <title>Model Delivery Portal - Money Manager</title>
-<link rel="stylesheet" href="css/styles.css?v=5">
+<link rel="stylesheet" href="css/styles.css?v=7">
 </head>
 <body>
 <div id="small-screen">
@@ -69,10 +69,21 @@
 <div id="modal-root"></div>
 <div id="success-root"></div>
 <div id="tip" class="tip" role="tooltip"></div>
-<input type="file" id="import-file" accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv" hidden>
+<div id="imp-root" class="imp-root" hidden>
+  <div class="imp-scrim" data-imp="close"></div>
+  <aside class="imp" role="dialog" aria-modal="true" aria-label="Import">
+    <header class="imp-h"><div class="imp-h-t"></div><button class="x" data-imp="close" aria-label="Close">&times;</button></header>
+    <div class="imp-body"></div>
+    <footer class="imp-f"></footer>
+  </aside>
+  <input type="file" id="imp-file" accept=".xlsx,.xlsm,.csv,.tsv,.txt" hidden>
+</div>
+<div id="imp-dropzone" class="imp-dropzone" hidden><div><b>Drop to import</b><span>.xlsx or .csv</span></div></div>
+<div id="imp-snack" class="imp-snack" role="status" hidden></div>
 
-<script src="js/data.js?v=5" defer></script>
-<script src="js/xlsx.js?v=5" defer></script>
-<script src="js/app.js?v=5" defer></script>
+<script src="js/data.js?v=7" defer></script>
+<script src="js/xlsx.js?v=7" defer></script>
+<script src="js/app.js?v=7" defer></script>
+<script src="js/import.js?v=7" defer></script>
 </body>
 </html>

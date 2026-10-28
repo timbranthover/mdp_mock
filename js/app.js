@@ -353,7 +353,7 @@
           '<div class="ml-title">Model List</div>' +
           '<div class="kv mgr"><span class="k">Manager</span><span class="v">' + esc(visibleManagers().join(', ')) + '</span></div>' +
           '<div class="kv user"><span class="k">User</span><span class="v">' + esc(persona.user) + '</span></div>' +
-          '<div class="ml-tools"><label class="search-box">' + I.search + '<input id="ml-search" placeholder="Search" value="' + esc(L.search) + '" autocomplete="off"></label>' +
+          '<div class="ml-tools"><button class="tool-link" data-act="list-import">' + I.excel + 'Bulk Import</button><label class="search-box">' + I.search + '<input id="ml-search" placeholder="Search" value="' + esc(L.search) + '" autocomplete="off"></label>' +
             '<button class="icon-btn" data-act="list-export" data-tip="Download" data-tip-anchor>' + I.download + '</button>' +
             '<button class="icon-btn" data-act="print" data-tip="Print" data-tip-anchor>' + I.print + '</button></div>' +
         '</section>' +
@@ -770,20 +770,27 @@
     logEvent(m, { ts: nowStamp(), event: 'Error When Adding Security', user: persona.user, details: 'Ticker/CUSIP = ' + tok + '\nERROR: ' + msg });
     return tok + ': ' + msg;
   }
+  /* Shared validation (Add box + Import). Returns {t} or {err} using production error wording. */
+  function checkSecurity(m, tok, d) {
+    tok = String(tok).trim().toUpperCase();
+    var t = resolveSecurity(tok);
+    if (!t) return { err: 'Invalid security. Not added to model.' };
+    var s = SEC[t];
+    if (s.error) return { t: t, err: s.error };
+    if (s.group === 'afunds' && m.kind !== 'afunds') return { t: t, err: 'Mutual fund not eligible for program. Not added to model.' };
+    if (m.kind === 'ucits' && t === tok && s.ucits) return { t: t, err: 'UCITS securities must be added by CINS. Not added to model.' };
+    if (d && rowOf(d, t)) return { t: t, err: 'Duplicate security. Not added to model' };
+    return { t: t };
+  }
   function addSecurities(m) {
     var input = $('#md-add'), tokens = input.value.split(/[,\s]+/).filter(Boolean);
     if (!tokens.length) { toast('Please enter a Ticker, CUSIP, CINS or SEDOL'); return; }
     var d = getDraft(m), added = [], errs = [];
     tokens.forEach(function (raw) {
-      var tok = raw.toUpperCase(), t = resolveSecurity(tok);
-      if (!t) { errs.push(addError(m, tok, 'Invalid security. Not added to model.')); return; }
-      var s = SEC[t];
-      if (s.error) { errs.push(addError(m, tok, s.error)); return; }
-      if (s.group === 'afunds' && m.kind !== 'afunds') { errs.push(addError(m, tok, 'Mutual fund not eligible for program. Not added to model.')); return; }
-      if (m.kind === 'ucits' && t === tok && s.ucits) { errs.push(addError(m, tok, 'UCITS securities must be added by CINS. Not added to model.')); return; }
-      if (rowOf(d, t)) { errs.push(addError(m, tok, 'Duplicate security. Not added to model')); return; }
-      var r = newRow(t, 0); r.added = true; d.rows.push(r);
-      added.push(t);
+      var tok = raw.toUpperCase(), c = checkSecurity(m, tok, d);
+      if (c.err) { errs.push(addError(m, tok, c.err)); return; }
+      var r = newRow(c.t, 0); r.added = true; d.rows.push(r);
+      added.push(c.t);
     });
     errs.forEach(function (msg) { toast(msg); });
     if (added.length) { input.value = ''; touch(m); renderMdTable(m); toast('Added ' + added.join(', ') + ' to model', 'ok'); var el = $('input.nw[data-t="' + added[added.length - 1] + '"]'); if (el) { el.scrollIntoView({ block: 'nearest' }); el.focus(); } }
@@ -814,21 +821,31 @@
       foot: '<button class="btn btn-text" data-act="close-modal">Go Back</button><button class="btn btn-tan" data-act="submit-anyway" data-acc="' + esc(m.access) + '" autofocus>Submit Anyway</button>'
     });
   }
-  function doSubmit(m) {
+  /* Applies the draft to the model and logs it. Shared by SUBMIT and bulk import. */
+  function applySubmit(m, extra) {
     var d = getDraft(m), df = diff(m, d), ts = nowStamp();
     m.holdings = d.rows.filter(function (r) { return +r.nw > EPS || r.ticker === CASH; }).map(function (r) { return { ticker: r.ticker, weight: round3(+r.nw) }; });
     m.holdings.sort(function (a, b) { return a.ticker === CASH ? -1 : b.ticker === CASH ? 1 : a.ticker < b.ticker ? -1 : 1; });
     m.status = 'Approved'; m.modified = ts; m.modifiedUser = persona.user;
     m.snapshots[todayISO()] = m.holdings.map(function (h) { return { ticker: h.ticker, weight: h.weight }; });
+    if (extra) logEvent(m, { ts: ts, event: 'Model Imported', user: persona.user, details: extra });
     logEvent(m, { ts: ts, event: isAdmin() ? 'Model Updated By Admin' : 'Model Updated', user: persona.user, details: '-', changes: df.changes });
     logEvent(m, { ts: ts, event: 'Model Approved', user: persona.user, details: '-', changes: df.changes });
     delete m.draft;
-    save(); route();
-    var moved = df.changes.filter(function (c) { return c.ticker !== CASH; });
+    save();
+    return { changes: df.changes, ts: ts };
+  }
+  function changeSummary(changes) {
+    var moved = changes.filter(function (c) { return c.ticker !== CASH; });
     var removed = moved.filter(function (c) { return c.to < EPS; }).length, added = moved.filter(function (c) { return c.from < EPS; }).length;
     var parts = [moved.length + ' weight change' + (moved.length === 1 ? '' : 's')];
     if (added) parts.push(added + ' added'); if (removed) parts.push(removed + ' removed');
-    successCard(m, 'Model Approved', parts.join(' · '), ts);
+    return parts.join(' · ');
+  }
+  function doSubmit(m) {
+    var res = applySubmit(m);
+    route();
+    successCard(m, 'Model Approved', changeSummary(res.changes), res.ts);
   }
   /* CONFIRM: once per visit to the model screen. */
   var confirmedHere = null;
@@ -854,7 +871,7 @@
     root.innerHTML = '<div class="okcard" role="status" aria-live="polite"><div class="okc-ic">' + I.ok + '</div><div class="okc-b">' +
       '<div class="okc-t">' + esc(title) + '</div><div class="okc-n">' + esc(m.name) + ' <span>' + esc(m.access) + '</span></div>' +
       '<div class="okc-d">' + esc(detail) + ' &middot; ' + fmt.conf(ts).split(' ').slice(1).join(' ') + '</div>' +
-      '<div class="okc-a"><button data-act="audit" data-acc="' + esc(m.access) + '">View Audit Trail</button><button data-act="card-close">Dismiss</button></div></div>' +
+      '<div class="okc-a">' + (m.access ? '<button data-act="audit" data-acc="' + esc(m.access) + '">View Audit Trail</button>' : '') + '<button data-act="card-close">Dismiss</button></div></div>' +
       '<button class="x" data-act="card-close" aria-label="Dismiss">&times;</button><i class="okc-bar"></i></div>';
     var card = root.firstChild, left = 5000, started = Date.now();
     function arm() { started = Date.now(); card.querySelector('.okc-bar').style.animationPlayState = 'running'; cardTimer = setTimeout(closeCard, left); }
@@ -892,39 +909,7 @@
     if (/ETF|ETC|TRUST|SPDR|SHARES/.test(s.desc)) return 'ETF';
     return 'Equity';
   }
-  /* Accepts the Excel template (header names) or a simple CSV (ticker, weight, ...). */
-  function importRows(m, rows, fname) {
-    rows = (rows || []).filter(function (r) { return r && r.some(function (v) { return String(v).trim() !== ''; }); });
-    if (!rows.length) { toast('The selected file is empty'); return; }
-    var hdr = rows[0].map(function (h) { return String(h).toLowerCase().replace(/\s+/g, ''); }), idx = {};
-    function find(re) { for (var i = 0; i < hdr.length; i++) if (re.test(hdr[i])) return i; return -1; }
-    idx.sec = find(/^(security|ticker)/); idx.cusip = find(/^cusip/); idx.w = find(/^(weight|newweight)/);
-    idx.tt = find(/^tradetype/); idx.dnb = find(/^donotbuy/); idx.dns = find(/^donotsell/); idx.notes = find(/^notes/);
-    if (idx.w > -1) rows.shift();
-    else { idx = { sec: 0, cusip: -1, w: 1, tt: 2, dnb: 3, dns: 4, notes: 5 }; if (isNaN(+rows[0][1])) rows.shift(); }
-    var d = getDraft(m), seen = {}, bad = [], cashSet = false;
-    function val(r, i) { return i > -1 && r[i] != null ? String(r[i]).trim() : ''; }
-    rows.forEach(function (r, n) {
-      var tok = val(r, idx.sec) || val(r, idx.cusip), wRaw = val(r, idx.w), w = wRaw === '' ? 0 : +wRaw;
-      if (!tok) return;
-      var t = /^usd ?cash$/i.test(tok) ? CASH : resolveSecurity(tok);
-      if (!t || isNaN(w) || w < 0 || (SEC[t] && SEC[t].error)) { bad.push('row ' + (n + 2) + ' (' + tok + ')'); return; }
-      var row = rowOf(d, t);
-      if (!row) { row = newRow(t, 0); row.added = true; d.rows.push(row); }
-      row.nw = round3(w);
-      if (t === CASH) cashSet = true;
-      var tt = val(r, idx.tt); if (tt && SEED.tradeTypes.indexOf(tt) > -1) row.tt = tt;
-      var b = val(r, idx.dnb); if (b) row.dnb = /^(y|yes|true|1)$/i.test(b);
-      var s = val(r, idx.dns); if (s) row.dns = /^(y|yes|true|1)$/i.test(s);
-      var nt = val(r, idx.notes); if (nt) row.notes = nt;
-      seen[t] = 1;
-    });
-    d.rows.forEach(function (r) { if (!seen[r.ticker] && r.ticker !== CASH) r.nw = 0; });
-    if (!cashSet) syncCash(m, false);
-    touch(m); renderMdTable(m);
-    if (bad.length) toast('Skipped ' + bad.length + ' invalid row(s): ' + bad.slice(0, 4).join(', ') + (bad.length > 4 ? '…' : ''));
-    toast('Imported ' + Object.keys(seen).length + ' securities from ' + fname + '. Review and SUBMIT.', 'ok');
-  }
+
 
   /* ---------- Model Options ---------- */
   function renderOptions(m, c) {
@@ -1123,7 +1108,8 @@
         dd.rows.forEach(function (r) { if (r.ticker !== CASH) { r.tt = SEED.tradeToTarget; r.notes = 'Fully Rebalance'; } });
         touch(m); renderMdTable(m); toast('All securities set to ' + SEED.tradeToTarget + ' · Notes: Fully Rebalance', 'ok'); break;
       }
-      case 'md-import': $('#import-file').value = ''; $('#import-file').click(); break;
+      case 'md-import': window.MDPImport.open(m ? m.access : null); break;
+      case 'list-import': window.MDPImport.open(null); break;
       case 'md-template': downloadTemplate(m); break;
       case 'md-clear': discardDraft(m); route(); break;
       case 'md-submit': submitModel(m); break;
@@ -1160,19 +1146,6 @@
     if (e.target.id === 'ml-goto' && e.key === 'Enter') goPage();
     if (e.key === 'Escape') { closeModal(); closeDatePicker(); if (S.ui.open) { S.ui.open = null; if ($('#ml-filters')) renderFilters(); } }
   });
-  $('#import-file').addEventListener('change', function (e) {
-    var f = e.target.files[0], m = currentModel();
-    if (!f || !m) return;
-    if (/\.csv$/i.test(f.name)) {
-      var rd = new FileReader();
-      rd.onload = function () { importRows(m, parseCsv(String(rd.result)), f.name); };
-      rd.readAsText(f);
-    } else {
-      f.arrayBuffer().then(window.MDPXlsx.read).then(function (rows) { importRows(m, rows, f.name); })
-        .catch(function (err) { toast('Could not read ' + f.name + ': ' + (err && err.message ? err.message : 'unsupported file')); });
-    }
-  });
-
   /* ================= router ================= */
   var current = { access: null }, skipRoute = false;
   function currentModel() { return current.access ? findModel(current.access) : null; }
@@ -1197,5 +1170,15 @@
     if (skipRoute) { skipRoute = false; return; }
     route(); window.scrollTo(0, 0);
   });
+  /* Internal API for js/import.js */
+  window.MDPCore = {
+    SEC: SEC, SEED: SEED, CASH: CASH, EPS: EPS, I: I, esc: esc, num: num, round3: round3, fmt: fmt, todayISO: todayISO, EOD: EOD,
+    persona: persona, isAdmin: isAdmin, displayName: displayName, toast: toast, hideTip: hideTip,
+    models: function () { return scopedModels(); }, findModel: findModel, lockedBy: lockedBy, currentModel: currentModel,
+    getDraft: getDraft, rowOf: rowOf, newRow: newRow, touch: touch, discardDraft: discardDraft, syncCash: syncCash,
+    renderMdTable: renderMdTable, updateTotals: updateTotals, checkSecurity: checkSecurity, resolveSecurity: resolveSecurity,
+    applySubmit: applySubmit, changeSummary: changeSummary, successCard: successCard, logEvent: logEvent, nowStamp: nowStamp,
+    parseCsv: parseCsv, save: save, route: route, onDetails: function () { return !!document.getElementById('md-table'); }
+  };
   route();
 })();

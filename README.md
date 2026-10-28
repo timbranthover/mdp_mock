@@ -30,6 +30,19 @@ Plain HTML/CSS/JS — no build step. Deploy the repo root as a static site on Ve
 - **Model Options**: Tax Loss Harvest Replacement saves and is logged.
 - Edits persist in the browser (localStorage).
 
+## Import (proposed)
+
+A right-side drawer replaces "pick a file". Open it with **Import** (Model Details), **Bulk Import** (Model List), by pressing **Ctrl+V anywhere** on either page, or by dragging a file onto the page.
+
+- **Paste from Excel, type, drop or browse.** Headers are optional. Columns are detected (Security/CUSIP, Weight, Shares, Market Value, TradeType, DoNotBuy, DoNotSell, Notes, Access) and can be remapped.
+- **Recognition:** ticker, CUSIP, CINS, SEDOL, or company name ("Apple"). Ticker typos get suggestions ("APPL" → AAPL). Weights as `10%`, `10` or `0.10`. Shares/market value are converted at EOD prices. Duplicates are combined and explained.
+- **Same rules as the grid:** restricted, not eligible, UCITS-needs-CINS and invalid securities are flagged in the row, with one-click fixes or *Skip*. USD Cash balances to 100% automatically and cannot go below 0.
+- **Modes:** *Replace model* or *Update listed only*, suggested automatically from how much of the model you pasted.
+- **Single model:** *Apply to Model* fills the grid (changed rows highlighted). Review, then Submit. **Undo** for 10 seconds.
+- **Bulk:** one sheet with an Access column updates many models. Locked, unknown or over-100% models are skipped with a reason. *Submit N Models* or *Apply as Drafts*.
+- **No files at all:** *Copy Current Model* / *Copy All Models* puts the data on the clipboard for Excel. Edit it, then paste it back.
+- Every import is logged in the audit trail as **Model Imported**.
+
 ## Proposed improvements (default) vs. today's behavior
 
 The twin shows proposed UX by default. Add `?ux=current` to see production behavior side by side.
@@ -57,3 +70,4 @@ These behaviors weren't visible in the screenshots, so they are best guesses:
 - `js/data.js` — mock strategies, securities, users, snapshots
 - `js/app.js` — routing, screens, interactions
 - `js/xlsx.js` — dependency-free Excel writer/reader (works without CDN access)
+- `js/import.js` — Import drawer (paste/drop/type, detection, preview, bulk)
