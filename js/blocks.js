@@ -18,9 +18,10 @@
     var $ = function (s, r) { return (r || document).querySelector(s); };
     var esc = C.esc, num = C.num, r3 = C.round3, fmt = C.fmt, I = C.I, CASH = C.CASH, EPS = C.EPS, SEC = C.SEC;
     var STALE_DAYS = 14;
-    var PALETTE = ['#5a5d5c', '#1d6e8f', '#b08a4e', '#7a9aa5', '#8f5a6b', '#6b8f5a'];
+    /* distinct, muted, colour-blind-aware (Okabe-Ito family, softened); no greys so sleeves never read as UI chrome */
+    var PALETTE = ['#2f6f9f', '#d9962b', '#3f9a78', '#b5679b', '#7fb3d5', '#c8603c', '#8a7bb8', '#9aa83a'];
     var SUBS = [['details', 'Composition'], ['holdings', 'Consolidated Holdings'], ['options', 'Model Options'], ['snapshot', 'Model Snapshot']];
-    var confirmedHere = null, openSec = {}, holdQ = '';
+    var confirmedHere = null, openSec = {};
 
     function blocks() { return C.S.models.filter(function (m) { return m.block; }); }
     function model(a) { return C.byAccess[a]; }
@@ -181,41 +182,114 @@
         (ev.length ? ev.map(function (e) { return '<div class="bb-up"><span class="bb-up-t">' + fmt.conf(e.ts) + '</span><span>' + esc(e.details) + '</span></div>'; }).join('') : '<div class="bb-up muted">No updates yet.</div>');
     }
 
-    /* ---------------- consolidated holdings ---------------- */
+    /* ---------------- consolidated holdings ----------------
+     * Allocation strip (one card per underlying strategy, click to focus it), summary tiles,
+     * filter chips, and a table where one bar shows both size (length, vs. the largest position)
+     * and who contributes (coloured segments). Click a row for the per-strategy arithmetic.
+     */
+    var HV = { block: null, q: '', f: 'all', sleeve: null, sort: { key: 'weight', dir: -1 } };
+    function pct(v) { return v.toFixed(3) + '%'; }
     function renderHoldings(b, c) {
+      if (HV.block !== b.access) { HV = { block: b.access, q: '', f: 'all', sleeve: null, sort: { key: 'weight', dir: -1 } }; }
       var preview = b.bdraft && b.bdraft.live && dirty(b), res = calc(b, preview), H = res.holdings, contrib = res.contrib;
       var sl = sleevesOf(b, preview).filter(function (s) { return s.alloc > 0; });
+      if (HV.sleeve && !sl.some(function (s) { return s.access === HV.sleeve; })) HV.sleeve = null;
       var non = H.filter(function (h) { return h.ticker !== CASH; }).sort(function (x, y) { return y.weight - x.weight; });
       var cash = (H[0] && H[0].ticker === CASH) ? H[0].weight : 0;
+      var max = non.length ? non[0].weight : 1, rank = {}, cum = {}, run = 0;
+      non.forEach(function (h, i) { rank[h.ticker] = i + 1; run += h.weight; cum[h.ticker] = run; });
+      var parts = function (t) { return (contrib[t] || []).slice().sort(function (x, y) { return y.c - x.c; }); };
       var top10 = r3(non.slice(0, 10).reduce(function (a, h) { return a + h.weight; }, 0));
       var overlap = non.filter(function (h) { return (contrib[h.ticker] || []).length > 1; });
       var conc = non.filter(function (h) { return h.weight > 5; });
-      var tile = function (k, v, sub) { return '<div class="bb-tile"><span class="k">' + k + '</span><span class="v">' + v + '</span>' + (sub ? '<span class="s">' + sub + '</span>' : '') + '</div>'; };
-      var html = (preview ? '<div class="bb-prev">Preview of your proposed allocation. Not yet submitted, so trading still uses the published model.</div>' : '') +
-        '<div class="bb-tiles">' + tile('Securities', non.length) + tile('Underlying Strategies', sl.length) + tile('USD Cash', cash.toFixed(3) + '%') +
-          tile('Largest Position', non[0] ? esc(non[0].ticker) + ' ' + non[0].weight.toFixed(3) + '%' : '-') + tile('Top 10', top10.toFixed(3) + '%') + tile('Held By 2+ Strategies', overlap.length, overlap.length ? r3(overlap.reduce(function (a, h) { return a + h.weight; }, 0)).toFixed(3) + '% of model' : '') + '</div>' +
-        (conc.length ? '<div class="bb-flagrow">' + I.attn + '<span><b>Concentration:</b> ' + conc.map(function (h) { return esc(h.ticker) + ' ' + h.weight.toFixed(3) + '%'; }).join(', ') + ' above the 5% single-security review level.</span></div>' : '') +
-        '<div class="bb-legend">' + sl.map(function (s) { var m = model(s.access); return '<span><i style="background:' + colorOf(b, s.access) + '"></i>' + esc(s.access) + ' ' + esc(m ? m.name : '') + ' &middot; ' + num(s.alloc, 3) + '%</span>'; }).join('') + '</div>' +
-        '<div class="bb-hbar"><label class="search-box">' + I.search + '<input id="bb-q" placeholder="Search securities" value="' + esc(holdQ) + '" autocomplete="off"></label><span class="bb-hint">Click a security to see which underlying strategies contribute to it.</span></div>' +
-        '<div class="grid-scroll bb-hscroll"><table class="grid bb-hgrid"><colgroup><col style="width:28px"><col style="width:90px"><col><col style="width:110px"><col style="width:150px"><col style="width:34%"></colgroup>' +
-        '<thead><tr><th></th><th>Ticker</th><th>Description</th><th class="r">Weight</th><th>Held By</th><th>Contribution By Strategy</th></tr></thead><tbody id="bb-hbody"></tbody></table></div>';
-      c.innerHTML = html;
+      var ovW = r3(overlap.reduce(function (a, h) { return a + h.weight; }, 0));
+      var stat = {}; sl.forEach(function (s) { stat[s.access] = { n: 0, uniq: 0 }; });
+      non.forEach(function (h) { var ps = contrib[h.ticker] || []; ps.forEach(function (p) { if (stat[p.access]) { stat[p.access].n++; if (ps.length === 1) stat[p.access].uniq++; } }); });
+
+      var tile = function (k, v, sub, cls) { return '<div class="bb-tile' + (cls ? ' ' + cls : '') + '"><span class="k">' + k + '</span><span class="v">' + v + '</span><span class="s">' + (sub || '&nbsp;') + '</span></div>'; };
+      var strip = '<div class="bb-alloc"><div class="bb-alloc-h"><span class="k">Allocation</span><span class="bb-hint">Select a strategy to see only what it contributes</span></div>' +
+        '<div class="bb-cards" style="grid-template-columns:' + sl.map(function (s) { return 'minmax(150px,' + s.alloc + 'fr)'; }).join(' ') + '">' + sl.map(function (s) {
+          var m = model(s.access), st = stat[s.access];
+          return '<button class="bb-card" data-blk="hsl" data-v="' + esc(s.access) + '" style="--c:' + colorOf(b, s.access) + '">' +
+            '<span class="bb-card-t"><b>' + esc(s.access) + '</b><span>' + pct(s.alloc) + '</span></span>' +
+            '<span class="bb-card-n" title="' + esc(m ? m.name : '') + '">' + esc(m ? m.name : '') + '</span>' +
+            '<span class="bb-card-m">' + st.n + ' securities &middot; ' + st.uniq + ' only here</span></button>';
+        }).join('') + '</div></div>';
+      c.innerHTML = (preview ? '<div class="bb-prev">' + I.info + '<span><b>Preview.</b> Showing your unsubmitted allocation. Trading still uses the published model until you Submit.</span></div>' : '') +
+        strip +
+        '<div class="bb-tiles">' +
+          tile('Securities', non.length, 'across ' + sl.length + ' strategies') +
+          tile('Largest Position', non[0] ? esc(non[0].ticker) + ' <small>' + pct(non[0].weight) + '</small>' : '-', conc.length ? I.attn + ' ' + (conc.length === 1 ? 'Above' : conc.length + ' positions above') + ' 5% review level' : 'All positions below 5%', conc.length ? 'attn' : '') +
+          tile('Top 10 Weight', pct(top10), 'of the model') +
+          tile('Held By 2+ Strategies', overlap.length, pct(ovW) + ' of the model') +
+          tile('USD Cash', pct(cash), 'from underlying models') +
+        '</div>' +
+        '<div class="bb-hbar"><div class="fchips" id="bb-chips"></div><label class="search-box">' + I.search + '<input id="bb-q" placeholder="Search securities" value="' + esc(HV.q) + '" autocomplete="off"></label></div>' +
+        '<div class="grid-scroll bb-hscroll"><table class="grid bb-hgrid" id="bb-htable"></table></div>' +
+        '<div class="bb-hfoot" id="bb-hfoot"></div>';
+
+      var COLS = [['', 26], ['#', 40, 'r'], ['Ticker', 84, '', 'ticker'], ['Description', 0, '', 'desc'], ['Weight', 96, 'r', 'weight'], ['Size And Contribution By Strategy', '34%', '', null, 'Bar length is the weight vs. the largest position. Colours show how much each underlying strategy contributes.'], ['Held By', 132, '', 'held'], ['Cumulative', 96, 'r']];
       var draw = function () {
-        var q = holdQ.trim().toLowerCase();
-        var rows = (cash ? [{ ticker: CASH, weight: cash }] : []).concat(non).filter(function (h) { var s = SEC[h.ticker]; return !q || (h.ticker + ' ' + (s ? s.desc : 'USD Cash')).toLowerCase().indexOf(q) > -1; });
-        $('#bb-hbody').innerHTML = rows.length ? rows.map(function (h) {
-          var parts = (contrib[h.ticker] || []).slice().sort(function (x, y) { return y.c - x.c; }), s = SEC[h.ticker], open = openSec[b.access + h.ticker];
-          var bar = '<div class="bb-bar">' + parts.map(function (p) { return '<i style="width:' + (h.weight ? p.c / h.weight * 100 : 0) + '%;background:' + colorOf(b, p.access) + '" data-tip="' + esc(p.access) + ': ' + p.c.toFixed(3) + '%" data-tip-anchor></i>'; }).join('') + '</div>';
-          var out = '<tr class="bb-sec' + (open ? ' open' : '') + '" data-blk="sec" data-t="' + esc(h.ticker) + '"><td class="chevc">' + I.chev + '</td><td class="b">' + esc(h.ticker) + '</td><td>' + esc(h.ticker === CASH ? 'USD Cash' : s ? s.desc : '') + '</td><td class="r b">' + h.weight.toFixed(3) + '%</td>' +
-            '<td>' + parts.length + ' strateg' + (parts.length === 1 ? 'y' : 'ies') + '</td><td>' + bar + '</td></tr>';
-          if (open) out += '<tr class="bb-x"><td></td><td colspan="5"><table class="chg-tbl bb-ctbl"><thead><tr><th>Underlying Strategy</th><th class="r">Weight In Strategy</th><th class="r">&times; Allocation</th><th class="r">= Contribution</th><th class="r">Share</th></tr></thead><tbody>' +
-            parts.map(function (p) { var m = model(p.access); return '<tr><td><span class="bb-dot" style="background:' + colorOf(b, p.access) + '"></span>' + esc(p.access) + ' ' + esc(m ? m.name : '') + '</td><td class="r">' + p.w.toFixed(3) + '%</td><td class="r">' + num(p.alloc, 3) + '%</td><td class="r b">' + p.c.toFixed(3) + '%</td><td class="r">' + (h.weight ? (p.c / h.weight * 100).toFixed(1) : '0.0') + '%</td></tr>'; }).join('') +
-            '<tr class="bb-ctot"><td>Combined</td><td></td><td></td><td class="r b">' + h.weight.toFixed(3) + '%</td><td class="r">100%</td></tr></tbody></table></td></tr>';
+        var q = HV.q.trim().toLowerCase(), f = HV.f, sx = HV.sleeve;
+        var list = non.filter(function (h) {
+          var ps = contrib[h.ticker] || [], sd = SEC[h.ticker];
+          if (q && (h.ticker + ' ' + (sd ? sd.desc : '')).toLowerCase().indexOf(q) < 0) return false;
+          if (f === 'overlap' && ps.length < 2) return false;
+          if (f === 'conc' && h.weight <= 5) return false;
+          if (sx && !ps.some(function (p) { return p.access === sx; })) return false;
+          return true;
+        });
+        var k = HV.sort.key, dir = HV.sort.dir;
+        list.sort(function (x, y) {
+          var a, z;
+          if (k === 'ticker') { a = x.ticker; z = y.ticker; }
+          else if (k === 'desc') { a = (SEC[x.ticker] || {}).desc || ''; z = (SEC[y.ticker] || {}).desc || ''; }
+          else if (k === 'held') { a = (contrib[x.ticker] || []).length; z = (contrib[y.ticker] || []).length; if (a === z) { a = x.weight; z = y.weight; } }
+          else { a = x.weight; z = y.weight; }
+          return a < z ? -dir : a > z ? dir : 0;
+        });
+        var showCash = cash && !q && f === 'all' && !sx;
+        var chip = function (v, label, n) { return '<button class="fchip' + (f === v ? ' on' : '') + '" data-blk="hf" data-v="' + v + '">' + label + ' <b>' + n + '</b></button>'; };
+        $('#bb-chips').innerHTML = chip('all', 'All', non.length) + chip('overlap', 'Held By 2+', overlap.length) + chip('conc', 'Above 5%', conc.length) +
+          (sx ? '<button class="fchip on bb-slchip" data-blk="hsl" data-v="' + esc(sx) + '" style="--c:' + colorOf(b, sx) + '"><i></i>' + esc(sx) + ' only <span aria-hidden="true">&times;</span></button>' : '');
+        Array.prototype.forEach.call(document.querySelectorAll('.bb-card'), function (el) { var v = el.getAttribute('data-v'); el.classList.toggle('on', v === sx); el.classList.toggle('dim', !!sx && v !== sx); });
+
+        var head = '<colgroup>' + COLS.map(function (cl) { return '<col' + (cl[1] ? ' style="width:' + (typeof cl[1] === 'number' ? cl[1] + 'px' : cl[1]) + '"' : '') + '>'; }).join('') + '</colgroup><thead><tr>' +
+          COLS.map(function (cl) {
+            var srt = cl[3] && k === cl[3] ? '<span class="sort">' + (dir > 0 ? '&#9650;' : '&#9660;') + '</span>' : '';
+            return '<th class="' + (cl[2] || '') + (cl[3] ? '' : ' ns') + '"' + (cl[3] ? ' data-blk="hs" data-k="' + cl[3] + '"' : '') + '>' + cl[0] + (cl[4] ? '<span class="ii" data-tip="' + esc(cl[4]) + '" data-tip-anchor>' + I.info + '</span>' : '') + srt + '</th>';
+          }).join('') + '</tr></thead>';
+        var row = function (h, isCash) {
+          var ps = parts(h.ticker), sd = SEC[h.ticker], open = openSec[b.access + h.ticker], big = h.weight > 5;
+          var len = isCash ? Math.min(100, h.weight / max * 100) : h.weight / max * 100;
+          var bar = '<div class="bb-sz"><div class="bb-sz-b" style="width:' + Math.max(len, 1.5) + '%">' + ps.map(function (p) {
+            return '<i class="' + (sx && p.access !== sx ? 'dim' : '') + '" style="flex:' + p.c + ' 1 0;background:' + colorOf(b, p.access) + '" data-tip="' + esc(p.access) + ' contributes ' + pct(p.c) + ' (' + (h.weight ? (p.c / h.weight * 100).toFixed(0) : 0) + '%)" data-tip-anchor></i>';
+          }).join('') + '</div></div>';
+          var dots = '<span class="bb-dots">' + ps.map(function (p) { return '<i style="background:' + colorOf(b, p.access) + '" class="' + (sx && p.access !== sx ? 'dim' : '') + '"></i>'; }).join('') + '</span>' + (isCash ? '' : ps.length > 1 ? '<span class="bb-ov">' + ps.length + ' strategies</span>' : '<span class="bb-one">' + esc(ps[0] ? ps[0].access : '') + ' only</span>');
+          var out = '<tr class="bb-sec' + (open ? ' open' : '') + (isCash ? ' bb-cash' : '') + '" data-blk="sec" data-t="' + esc(h.ticker) + '">' +
+            '<td class="chevc">' + I.chev + '</td><td class="r bb-rk">' + (isCash ? '' : rank[h.ticker]) + '</td><td class="b">' + esc(h.ticker) + '</td>' +
+            '<td data-tip="' + esc(isCash ? 'USD Cash' : sd ? sd.desc : '') + '" data-tip-trunc>' + esc(isCash ? 'Residual cash from the underlying models' : sd ? sd.desc : '') + '</td>' +
+            '<td class="r bb-w' + (big ? ' big' : '') + '"' + (big ? ' data-tip="Above the 5% single-security review level" data-tip-anchor' : '') + '>' + (big ? '<span class="bb-wi">' + I.attn + '</span>' : '') + pct(h.weight) + '</td>' +
+            '<td>' + bar + '</td><td>' + dots + '</td><td class="r bb-cum">' + (isCash ? '' : pct(cum[h.ticker])) + '</td></tr>';
+          if (open) {
+            out += '<tr class="bb-x"><td></td><td colspan="7"><div class="bb-math"><div class="bb-math-h"><span>How ' + esc(h.ticker) + ' gets to ' + pct(h.weight) + '</span><span>Weight in strategy &times; allocation = contribution</span></div>' +
+              ps.map(function (p) {
+                var m = model(p.access), share = h.weight ? p.c / h.weight * 100 : 0;
+                return '<div class="bb-math-r' + (sx && p.access !== sx ? ' dim' : '') + '"><span class="bb-math-s"><i style="background:' + colorOf(b, p.access) + '"></i><b>' + esc(p.access) + '</b><span>' + esc(m ? m.name : '') + '</span></span>' +
+                  '<span class="bb-math-e">' + pct(p.w) + ' <em>&times;</em> ' + num(p.alloc, 3) + '% <em>=</em> <b>' + pct(p.c) + '</b></span>' +
+                  '<span class="bb-math-b"><i style="width:' + share + '%;background:' + colorOf(b, p.access) + '"></i></span><span class="bb-math-p">' + share.toFixed(1) + '%</span></div>';
+              }).join('') +
+              '<div class="bb-math-r tot"><span class="bb-math-s">Combined</span><span class="bb-math-e"><b>' + pct(h.weight) + '</b></span><span></span><span class="bb-math-p">100%</span></div></div></td></tr>';
+          }
           return out;
-        }).join('') : '<tr class="empty-row"><td colspan="6">No securities match</td></tr>';
+        };
+        var body = (showCash ? row({ ticker: CASH, weight: cash }, true) : '') + list.map(function (h) { return row(h, false); }).join('');
+        $('#bb-htable').innerHTML = head + '<tbody>' + (body || '<tr class="empty-row"><td colspan="8">No securities match</td></tr>') + '</tbody>';
+        var shown = r3(list.reduce(function (a, h) { return a + h.weight; }, 0));
+        $('#bb-hfoot').innerHTML = '<span>Showing <b>' + list.length + '</b> of ' + non.length + ' securities &middot; <b>' + pct(shown) + '</b> of the model' + (sx ? ' (full weight of each security, not just ' + esc(sx) + '’s share)' : '') + '</span><span>Click a row to see the arithmetic</span>';
       };
       draw();
-      $('#bb-q').addEventListener('input', function (e) { holdQ = e.target.value; draw(); });
+      $('#bb-q').addEventListener('input', function (e) { HV.q = e.target.value; draw(); });
       c._draw = draw;
     }
 
@@ -296,6 +370,7 @@
     }
 
     /* ---------------- events ---------------- */
+    function redraw() { var c = $('#d-content'); if (c && c._draw) c._draw(); }
     function cur() { var m = C.currentModel(); return m && m.block ? m : null; }
     document.addEventListener('click', function (e) {
       var el = e.target.closest('[data-blk]'); if (!el) return;
@@ -308,6 +383,9 @@
       else if (a === 'submit') submit(b, false);
       else if (a === 'submit-anyway') submit(b, true);
       else if (a === 'confirm') confirmBlock(b);
+      else if (a === 'hf') { HV.f = el.getAttribute('data-v'); redraw(); }
+      else if (a === 'hsl') { var v = el.getAttribute('data-v'); HV.sleeve = HV.sleeve === v ? null : v; redraw(); }
+      else if (a === 'hs') { var sk = el.getAttribute('data-k'); HV.sort = HV.sort.key === sk ? { key: sk, dir: -HV.sort.dir } : { key: sk, dir: sk === 'weight' || sk === 'held' ? -1 : 1 }; redraw(); }
       else if (a === 'sec') { var k = b.access + el.getAttribute('data-t'); openSec[k] = !openSec[k]; var c = $('#d-content'); if (c && c._draw) c._draw(); }
     });
     document.addEventListener('input', function (e) {

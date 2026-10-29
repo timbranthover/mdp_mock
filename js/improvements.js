@@ -161,7 +161,7 @@
       why: 'Allocation changes are made, checked and approved in one place, with every change in the audit trail.', added: '2026-10-28', status: P, try: '#/model/B101/info/details' },
     { id: 'BB-03', area: 'Building Blocks', title: 'Consolidated holdings with drill-down',
       today: 'Not available.',
-      change: 'Consolidated Holdings tab shows the look-through model (allocation × weight in each underlying model). Summary tiles, 5% concentration flag, securities held by 2+ strategies, and a click-through per security showing which strategies contribute and how much. Previews unsubmitted allocation changes.',
+      change: 'Consolidated Holdings tab shows the look-through model (allocation × weight in each underlying model). Strategy cards sized by allocation (click one to see only what it contributes), summary tiles, filters for overlap and positions above 5%, and one bar per security showing both its size and which strategies make it up. Click a row for the arithmetic (weight × allocation = contribution). Previews unsubmitted allocation changes.',
       why: 'Shows what accounts will actually hold, and where overlap and concentration come from.', added: '2026-10-28', status: P, try: '#/model/B101/info/holdings' },
     { id: 'BB-04', area: 'Building Blocks', title: 'Automatic recalculation when an underlying model changes',
       today: 'Not available.',
