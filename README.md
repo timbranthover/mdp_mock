@@ -51,7 +51,7 @@ A right-side drawer replaces "pick a file". Open it with **Import** on Model Det
 A Building Block is a UBS CIO strategy made of existing third-party SMA models (B101, B102 under *UBS CIO Building Blocks*).
 
 - **Composition** tab: add underlying strategies by Access code or name, set allocations (total must be 100%; *Scale To 100%* helps), then Submit / Confirm / Clear like Model Details. Each underlying model's status, last update and stale flag (14+ days) are shown.
-- **Consolidated Holdings** tab: the look-through model (allocation × weight in each underlying model), with summary tiles, a 5% concentration flag, overlap count, and a per-security drill-down of contributions. Unsubmitted allocation edits are previewed.
+- **Consolidated Holdings** tab: the look-through model (allocation × weight in each underlying model), with summary tiles, a 5% single-stock concentration flag (funds exempt), overlap count, and a per-security drill-down of contributions. Unsubmitted allocation edits are previewed.
 - **Automatic updates:** when an underlying model is approved, every block using it is recalculated and published, logged as *Underlying Model Updated* in the block's audit trail.
 - **Status flows up:** an underlying model that is Rejected or Needs Attention puts the block in Needs Attention, with a link to that model.
 - **Managers never see blocks.** Underlying models stay separate; the UBS view shows "Used in a Building Block" on them (try `?persona=polen`, where nothing changes).

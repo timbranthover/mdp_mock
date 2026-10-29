@@ -189,6 +189,9 @@
      */
     var HV = { block: null, q: '', f: 'all', sleeve: null, sort: { key: 'weight', dir: -1 } };
     function pct(v) { return v.toFixed(3) + '%'; }
+    /* Diversified funds/ETFs are exempt from the 5% single-security review. */
+    function isFund(t) { var x = SEC[t]; return !!x && /^(ishares|vanguard|capgroup|other_etf|afunds|ucits)$/.test(x.group); }
+    function overLimit(h) { return h.weight > 5 && !isFund(h.ticker); }
     function renderHoldings(b, c) {
       if (HV.block !== b.access) { HV = { block: b.access, q: '', f: 'all', sleeve: null, sort: { key: 'weight', dir: -1 } }; }
       var preview = b.bdraft && b.bdraft.live && dirty(b), res = calc(b, preview), H = res.holdings, contrib = res.contrib;
@@ -201,7 +204,7 @@
       var parts = function (t) { return (contrib[t] || []).slice().sort(function (x, y) { return y.c - x.c; }); };
       var top10 = r3(non.slice(0, 10).reduce(function (a, h) { return a + h.weight; }, 0));
       var overlap = non.filter(function (h) { return (contrib[h.ticker] || []).length > 1; });
-      var conc = non.filter(function (h) { return h.weight > 5; });
+      var conc = non.filter(overLimit);
       var ovW = r3(overlap.reduce(function (a, h) { return a + h.weight; }, 0));
       var stat = {}; sl.forEach(function (s) { stat[s.access] = { n: 0, uniq: 0 }; });
       non.forEach(function (h) { var ps = contrib[h.ticker] || []; ps.forEach(function (p) { if (stat[p.access]) { stat[p.access].n++; if (ps.length === 1) stat[p.access].uniq++; } }); });
@@ -219,7 +222,7 @@
         strip +
         '<div class="bb-tiles">' +
           tile('Securities', non.length, 'across ' + sl.length + ' strategies') +
-          tile('Largest Position', non[0] ? esc(non[0].ticker) + ' <small>' + pct(non[0].weight) + '</small>' : '-', conc.length ? I.attn + ' ' + (conc.length === 1 ? 'Above' : conc.length + ' positions above') + ' 5% review level' : 'All positions below 5%', conc.length ? 'attn' : '') +
+          tile('Largest Position', non[0] ? esc(non[0].ticker) + ' <small>' + pct(non[0].weight) + '</small>' : '-', conc.length ? I.attn + ' ' + conc.length + ' stock' + (conc.length === 1 ? '' : 's') + ' above 5% review level' : 'No single stock above 5%', conc.length ? 'attn' : '') +
           tile('Top 10 Weight', pct(top10), 'of the model') +
           tile('Held By 2+ Strategies', overlap.length, pct(ovW) + ' of the model') +
           tile('USD Cash', pct(cash), 'from underlying models') +
@@ -235,7 +238,7 @@
           var ps = contrib[h.ticker] || [], sd = SEC[h.ticker];
           if (q && (h.ticker + ' ' + (sd ? sd.desc : '')).toLowerCase().indexOf(q) < 0) return false;
           if (f === 'overlap' && ps.length < 2) return false;
-          if (f === 'conc' && h.weight <= 5) return false;
+          if (f === 'conc' && !overLimit(h)) return false;
           if (sx && !ps.some(function (p) { return p.access === sx; })) return false;
           return true;
         });
@@ -250,7 +253,7 @@
         });
         var showCash = cash && !q && f === 'all' && !sx;
         var chip = function (v, label, n) { return '<button class="fchip' + (f === v ? ' on' : '') + '" data-blk="hf" data-v="' + v + '">' + label + ' <b>' + n + '</b></button>'; };
-        $('#bb-chips').innerHTML = chip('all', 'All', non.length) + chip('overlap', 'Held By 2+', overlap.length) + chip('conc', 'Above 5%', conc.length) +
+        $('#bb-chips').innerHTML = chip('all', 'All', non.length) + chip('overlap', 'Held By 2+', overlap.length) + chip('conc', 'Stocks Above 5%', conc.length) +
           (sx ? '<button class="fchip on bb-slchip" data-blk="hsl" data-v="' + esc(sx) + '" style="--c:' + colorOf(b, sx) + '"><i></i>' + esc(sx) + ' only <span aria-hidden="true">&times;</span></button>' : '');
         Array.prototype.forEach.call(document.querySelectorAll('.bb-card'), function (el) { var v = el.getAttribute('data-v'); el.classList.toggle('on', v === sx); el.classList.toggle('dim', !!sx && v !== sx); });
 
@@ -260,7 +263,7 @@
             return '<th class="' + (cl[2] || '') + (cl[3] ? '' : ' ns') + '"' + (cl[3] ? ' data-blk="hs" data-k="' + cl[3] + '"' : '') + '>' + cl[0] + (cl[4] ? '<span class="ii" data-tip="' + esc(cl[4]) + '" data-tip-anchor>' + I.info + '</span>' : '') + srt + '</th>';
           }).join('') + '</tr></thead>';
         var row = function (h, isCash) {
-          var ps = parts(h.ticker), sd = SEC[h.ticker], open = openSec[b.access + h.ticker], big = h.weight > 5;
+          var ps = parts(h.ticker), sd = SEC[h.ticker], open = openSec[b.access + h.ticker], big = !isCash && overLimit(h);
           var len = isCash ? Math.min(100, h.weight / max * 100) : h.weight / max * 100;
           var bar = '<div class="bb-sz"><div class="bb-sz-b" style="width:' + Math.max(len, 1.5) + '%">' + ps.map(function (p) {
             return '<i class="' + (sx && p.access !== sx ? 'dim' : '') + '" style="flex:' + p.c + ' 1 0;background:' + colorOf(b, p.access) + '" data-tip="' + esc(p.access) + ' contributes ' + pct(p.c) + ' (' + (h.weight ? (p.c / h.weight * 100).toFixed(0) : 0) + '%)" data-tip-anchor></i>';

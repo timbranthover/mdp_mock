@@ -70,6 +70,31 @@
       ['SHOP', 'SHOPIFY INC CL A', 162.40, '82509L107', 1],
       ['TT', 'TRANE TECHNOLOGIES PLC', 448.90, 'G8994E103', 0]
     ],
+    // added for the curated Building Block strategies (kept out of the random pools so other models don't change)
+    growth2: [
+      ['ORCL', 'ORACLE CORP', 236.40, '68389X105', 0],
+      ['LRCX', 'LAM RESEARCH CORP', 148.20, '512807306', 0],
+      ['KLAC', 'KLA CORP', 1088.50, '482480100', 0],
+      ['MU', 'MICRON TECHNOLOGY INC', 214.30, '595112103', 0],
+      ['STX', 'SEAGATE TECHNOLOGY HLDGS PLC', 238.60, 'G7997R103', 0],
+      ['PWR', 'QUANTA SERVICES INC', 418.70, '74762E102', 0],
+      ['EME', 'EMCOR GROUP INC', 652.10, '29084Q100', 0],
+      ['SBUX', 'STARBUCKS CORP', 84.30, '855244109', 0],
+      ['ABNB', 'AIRBNB INC CL A', 124.60, '009066101', 0],
+      ['SAP', 'SAP SE SPON ADR', 268.90, '803054204', 1],
+      ['RELX', 'RELX PLC SPON ADR', 46.20, '759530108', 1],
+      ['TCEHY', 'TENCENT HLDGS LTD ADR', 78.40, '88032Q109', 1],
+      ['HDB', 'HDFC BANK LTD ADR', 37.90, '40415F101', 1],
+      ['SONY', 'SONY GROUP CORP SPON ADR', 28.70, '835699307', 1],
+      ['NVO', 'NOVO NORDISK A/S ADR', 54.20, '670100205', 1],
+      ['AZN', 'ASTRAZENECA PLC SPON ADR', 82.10, '046353108', 1],
+      ['SAFRY', 'SAFRAN SA UNSP ADR', 88.40, '786584102', 1],
+      ['RYCEY', 'ROLLS-ROYCE HLDGS PLC ADR', 14.90, '775781206', 1],
+      ['AAGIY', 'AIA GROUP LTD SPON ADR', 39.60, '001317205', 1],
+      ['NSRGY', 'NESTLE SA SPON ADR', 98.10, '641069406', 1],
+      ['LVMUY', 'LVMH MOET HENNESSY ADR', 142.30, '502441306', 1],
+      ['TOELY', 'TOKYO ELECTRON LTD ADR', 104.80, '889110102', 1]
+    ],
     restricted: [
       ['TSLA', 'TESLA INC', 412.30, '88160R101', 0],
       ['LULU', 'LULULEMON ATHLETICA INC', 182.75, '550021109', 0],
@@ -97,6 +122,17 @@
       ['TXN', 'TEXAS INSTRUMENTS INC', 178.90, '882508104', 0],
       ['EA', 'ELECTRONIC ARTS', 204.84, '285512109', 0],
       ['HON', 'HONEYWELL INTL INC', 214.60, '438516106', 0]
+    ],
+    value2: [
+      ['RTX', 'RTX CORP', 172.40, '75513E101', 0],
+      ['CAT', 'CATERPILLAR INC', 538.20, '149123101', 0],
+      ['GS', 'GOLDMAN SACHS GROUP INC', 792.60, '38141G104', 0],
+      ['PM', 'PHILIP MORRIS INTL INC', 158.30, '718172109', 0],
+      ['CEG', 'CONSTELLATION ENERGY CORP', 348.90, '21037T109', 0],
+      ['LIN', 'LINDE PLC', 452.70, 'G54950103', 0],
+      ['TMO', 'THERMO FISHER SCIENTIFIC INC', 548.20, '883556102', 0],
+      ['UNP', 'UNION PACIFIC CORP', 226.40, '907818108', 0],
+      ['SO', 'SOUTHERN CO', 92.80, '842587107', 0]
     ],
     ishares: [
       ['AGG', 'ISHARES CORE US AGGREGATE BD ETF', 100.45, '464287226', 0],
@@ -219,7 +255,42 @@
     vanguard:{ eq: ['VTI', 'VXUS', 'VO', 'VB', 'VEA', 'VWO', 'VIG'], fi: ['BND', 'BNDX', 'VTEB', 'VGIT'], eqN: [4, 6], fiN: [2, 3] }
   };
 
+  /* Curated holdings for the strategies used in the Building Blocks, modelled on public data so the
+   * look-through overlap is realistic. Weights are relative; they are scaled to (100 - cash).
+   *  N611 Polen Focus Growth: top 10, sector mix and Q3 2026 adds/exits from Polen's 9/30/2026 SMA fact sheet & commentary.
+   *  N612 Polen Global Growth: top 10 and region mix from Polen's 9/30/2026 fact sheet.
+   *  N541 Capital Group U.S. Equity: top 5, ~3% cash and sector mix from its Morgan Stanley Select UMA profile (6/30/2026); tail illustrative.
+   *  N533 Capital Group Global Equity: Capital Group global ADR SMA style; names illustrative.
+   *  N602 12th Street US Dividend Value and N622 Vanguard Core ETF Allocation - Mod: illustrative.
+   */
+  var CURATED = {
+    N611: { cash: 0.98, rows: [['MSFT', 9.23], ['NVDA', 7.78], ['NOW', 6.44], ['GOOG', 6.13], ['AVGO', 6.01], ['AMZN', 5.88], ['V', 5.47], ['MA', 5.35], ['LLY', 4.76], ['ORCL', 4.53],
+      ['SHOP', 3.6], ['META', 3.05], ['LRCX', 2.6], ['PWR', 2.6], ['ISRG', 2.45], ['EME', 2.4], ['CSGP', 2.29], ['ASML', 2.2], ['UBER', 2.1], ['ADBE', 1.97], ['IDXX', 1.81],
+      ['STX', 1.6], ['GE', 1.58], ['ADYEY', 1.54], ['SBUX', 1.45], ['ABNB', 1.42], ['ORLY', 1.4], ['NFLX', 1.38]] },
+    N612: { cash: 2.12, rows: [['GOOG', 6.30], ['NVDA', 6.23], ['MSFT', 6.03], ['TSM', 5.32], ['V', 4.94], ['LLY', 4.71], ['MA', 4.60], ['AMZN', 4.15], ['AVGO', 3.32], ['META', 3.30],
+      ['NOW', 3.09], ['ASML', 3.0], ['TCEHY', 2.9], ['ORCL', 2.8], ['SAP', 2.6], ['SONY', 2.59], ['MELI', 2.34], ['SHOP', 2.3], ['SPGI', 2.2], ['GEV', 2.2], ['HDB', 2.18], ['RELX', 2.12],
+      ['ISRG', 2.1], ['HESAY', 2.1], ['COST', 2.04], ['AON', 2.0], ['NFLX', 2.0], ['UBER', 2.0], ['ADYEY', 2.0], ['LRLCY', 1.7], ['HWM', 1.6], ['CSGP', 1.13]] },
+    N541: { cash: 3.29, rows: [['AVGO', 7.8], ['GOOG', 6.2], ['KLAC', 5.8], ['MU', 5.4], ['MSFT', 4.6], ['META', 3.4], ['NVDA', 3.2], ['AMZN', 3.0], ['AAPL', 2.6], ['GE', 2.6], ['JPM', 2.4], ['LLY', 2.3],
+      ['GEV', 2.2], ['RTX', 2.0], ['NEE', 1.9], ['CEG', 1.8], ['V', 1.7], ['ABBV', 1.7], ['NFLX', 1.6], ['TSM', 1.6], ['CAT', 1.6], ['PM', 1.5], ['COST', 1.5], ['MA', 1.4], ['HWM', 1.4],
+      ['GS', 1.3], ['UNH', 1.3], ['SPGI', 1.2], ['TMO', 1.2], ['LIN', 1.2], ['SO', 1.2], ['HD', 1.1], ['UNP', 1.1], ['ORCL', 1.1], ['ISRG', 1.0], ['XOM', 1.0], ['PG', 1.0], ['TXN', 0.9], ['NOW', 0.9], ['BRK/B', 0.9]] },
+    N533: { cash: 4.6, rows: [['TSM', 4.2], ['AVGO', 4.0], ['MSFT', 3.8], ['META', 3.0], ['NVO', 2.8], ['AZN', 2.7], ['GOOG', 2.6], ['ASML', 2.4], ['SAFRY', 2.4], ['PM', 2.3], ['RYCEY', 2.2], ['SAP', 2.1],
+      ['AAGIY', 2.0], ['NVDA', 2.0], ['LLY', 2.0], ['JPM', 1.9], ['NSRGY', 1.8], ['TOELY', 1.8], ['LVMUY', 1.7], ['HDB', 1.7], ['GE', 1.7], ['AMZN', 1.6], ['MELI', 1.6], ['SONY', 1.6], ['HESAY', 1.5],
+      ['TCEHY', 1.5], ['RELX', 1.4], ['V', 1.4], ['UNH', 1.3], ['CAT', 1.3], ['LIN', 1.2], ['GEV', 1.2], ['XOM', 1.1], ['COST', 1.1], ['LRLCY', 1.0]] },
+    N602: { cash: 2.4, rows: [['JPM', 5.2], ['JNJ', 4.6], ['XOM', 4.4], ['PG', 4.1], ['ABBV', 3.9], ['CVX', 3.6], ['HD', 3.5], ['MRK', 3.3], ['BRK/B', 3.3], ['UNH', 3.2], ['CSCO', 3.1], ['PEP', 3.0],
+      ['KO', 3.0], ['WMT', 2.9], ['MCD', 2.8], ['TXN', 2.7], ['HON', 2.6], ['NEE', 2.6], ['GS', 2.5], ['LMT', 2.4], ['VZ', 2.3], ['RTX', 2.3], ['CAT', 2.2], ['PM', 2.2], ['SO', 2.1], ['UNP', 2.0],
+      ['LIN', 1.9], ['MSFT', 1.9], ['AVGO', 1.8], ['TMO', 1.6]] },
+    N622: { cash: 1.5, rows: [['VTI', 36], ['VXUS', 22], ['BND', 26.5], ['BNDX', 11], ['VGIT', 3]] }
+  };
   function buildHoldings(model) {
+    var cur = CURATED[model.access];
+    if (cur) {
+      var tot = cur.rows.reduce(function (a, r) { return a + r[1]; }, 0), inv = 100 - cur.cash;
+      var out = cur.rows.map(function (r) { return { ticker: r[0], weight: +(r[1] / tot * inv).toFixed(3) }; });
+      var u = out.reduce(function (a, r) { return a + r.weight; }, 0);
+      out.sort(function (a, b) { return a.ticker < b.ticker ? -1 : 1; });
+      out.unshift({ ticker: 'USD Cash', weight: +(100 - u).toFixed(3) });
+      return out;
+    }
     var rand = mulberry32(hashStr(model.access + model.name));
     var k = KINDS[model.kind];
     var fiShare = k.fi.length ? fiShareFromName(model.name) : 0;
@@ -278,8 +349,10 @@
     [M.cg, 'Capital Group ETF Core Plus Growth & Income', 'N532', 'Z9NO', 'Dynamic', 253, 87.23, 'capgroup', 'Approved', '2026-10-27 04:00:01.640517', 'ho', '2026-09-02 09:10:00', 'uat'],
     [M.cg, 'Capital Group ETF Core Plus Cons Income', 'N534', 'Z9NP', 'Static', 30, 13.97, 'capgroup', 'Approved', '2026-10-19 06:45:36.946200', 'qa', null, null],
     [M.cg, 'Capital Group ETF Core Plus Mod Growth & Inc', 'N531', 'Z9NR', 'Static', 329, 103.85, 'capgroup', 'Approved', '2026-10-19 06:46:30.107734', 'qa', null, null],
-    [M.cg, 'Capital Group Global Equity Focus', 'N533', 'Z9NS', 'Static', 211, 64.40, 'capgroup', 'Approved', '2026-10-14 08:12:09.551023', 'ho', '2026-10-01 11:05:00', 'qa'],
+    [M.cg, 'Capital Group Global Equity SMA', 'N533', 'Z9NS', 'Static', 211, 64.40, 'capgroup', 'Approved', '2026-10-14 08:12:09.551023', 'ho', '2026-10-01 11:05:00', 'qa'],
     [M.cg, 'Capital Group Multi-Sector Income', 'N530', 'Z9NT', 'Static', 87, 29.18, 'capgroup', 'In Progress', '2026-10-27 17:22:40.019876', 'admin', null, null],
+    [M.cg, 'Capital Group U.S. Equity SMA', 'N541', '', 'Static', 388, 142.61, 'capgroup', 'Approved', '2026-10-23 15:41:07.218843', 'ho', '2026-10-01 10:20:00', 'qa'],
+    [M.t12, '12th Street US Dividend Value', 'N602', '', 'Static', 247, 58.33, 'multi', 'Approved', '2026-10-22 11:36:52.604119', 'qa', '2026-10-06 13:05:00', 'qa'],
     [M.pl, 'Polen Focus Growth Equity', 'N611', '', 'Static', 1204, 312.55, 'polen', 'Approved', '2026-10-21 14:02:11.903301', 'qa', '2026-10-21 14:30:00', 'qa'],
     [M.pl, 'Polen Global Growth', 'N612', '', 'Static', 344, 96.02, 'polen', 'Needs Attention', '2026-10-21 11:04:56.393805', 'sys', '2026-10-03 10:12:00', 'qa'],
     [M.pl, 'Polen Small Company Growth', 'N613', '', 'Static', 61, 12.84, 'polen', 'Rejected', '2026-10-24 11:27:05.664912', 'admin', null, null],
@@ -417,8 +490,10 @@
     return { holdings: rows, contrib: contrib };
   }
   var BLOCK_DEFS = [
-    ['B101', 'UBS US Equity Building Block', 'Static', 214, 61.42, [['N611', 50], ['N529', 30], ['N622', 20]], '2026-10-01 09:12:44.210331', '2026-10-15 10:02:18.553201'],
-    ['B102', 'UBS Global Multi-Asset Building Block', 'Static', 96, 28.75, [['N622', 40], ['N533', 30], ['N612', 20], ['N539', 10]], '2026-10-02 14:31:05.118842', '2026-10-09 11:46:30.774410']
+    // growth + core + value: heavy, realistic overlap in mega-cap names
+    ['B101', 'UBS US Equity Building Block', 'Static', 214, 61.42, [['N611', 35], ['N541', 40], ['N602', 25]], '2026-10-01 09:12:44.210331', '2026-10-15 10:02:18.553201'],
+    // ~65% equity (US growth, US core, global, dividend+muni) / ~35% bonds via Vanguard and BlackRock sleeves
+    ['B102', 'UBS Global Multi-Asset Building Block', 'Static', 96, 28.75, [['N533', 25], ['N622', 25], ['N612', 20], ['N529', 15], ['N541', 15]], '2026-10-02 14:31:05.118842', '2026-10-09 11:46:30.774410']
   ];
   function buildBlocks(models) {
     var by = {}; models.forEach(function (m) { by[m.access] = m; });
@@ -449,7 +524,7 @@
   }
 
   window.MDP_SEED = {
-    version: 5,
+    version: 6,
     managers: [M.bk, M.af, M.pl, M.cg, M.vg, M.t12, M.cio], // order used in the Model List header
     managerOptions: [M.t12, M.af, M.bk, M.cg, M.pl, M.vg, M.cio], // order used in the Manager filter
     blockManager: M.cio,
