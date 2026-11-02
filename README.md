@@ -46,15 +46,21 @@ A right-side drawer replaces "pick a file". Open it with **Import** on Model Det
 - **No files at all:** *Copy Current Model* puts the data on the clipboard for Excel. Edit it, then paste it back.
 - Every import is logged in the audit trail as **Model Imported**.
 
-## Building Blocks (proposed, UBS CIO view)
+## Portfolios (proposed, UBS CIO view)
 
-A Building Block is a UBS CIO strategy made of existing third-party SMA models (B101–B105, the MyWay Building Blocks under *UBS CIO Building Blocks*).
+Three kinds of UBS CIO models:
 
-- **Composition** tab: add underlying strategies by Access code or name, set allocations (total must be 100%; *Scale To 100%* helps), then Submit / Confirm / Clear like Model Details. Each underlying model's status, last update and stale flag (14+ days) are shown.
-- **Consolidated Holdings** tab: the look-through model (allocation × weight in each underlying model), with summary tiles, a 5% single-stock concentration flag (funds exempt), overlap count, and a per-security drill-down of contributions. Unsubmitted allocation edits are previewed.
-- **Automatic updates:** when an underlying model is approved, every block using it is recalculated and published, logged as *Underlying Model Updated* in the block's audit trail.
-- **Status flows up:** an underlying model that is Rejected or Needs Attention puts the block in Needs Attention, with a link to that model.
-- **Managers never see blocks.** Underlying models stay separate; the UBS view shows "Used in a Building Block" on them (try `?persona=polen`, where nothing changes).
+- **UBS Building Blocks** (B301–B308, *UBS CIO Building Blocks*): ordinary models, each like a single SMA (US Large Cap Growth, Value, Tax-Aware Core, Dividend Income, International ADR, Emerging Markets ADR, Core Fixed Income, Municipal Income). Edited on Model Details.
+- **MyWay Portfolios** (W201–W206, *UBS CIO MyWay Portfolios*): a fixed menu of portfolios made only of UBS Building Blocks, each labelled with the client profile it serves (region, tax treatment, objective).
+- **Multi-Manager Portfolios** (M101–M105, *UBS CIO Multi-Manager Portfolios*): portfolios made only of third-party SMA models. Managers never see them.
+
+Portfolios share the same screens:
+
+- **Composition**: add underlying models by Access code or name, set allocations (total must be 100%; *Scale To 100%* helps), then Submit / Confirm / Clear like Model Details. No mixing of the two families, and no portfolio inside a portfolio.
+- **Consolidated Holdings**: the look-through model (allocation × weight), with summary tiles, overlap and single-stock 5% filters (funds exempt) and a per-security drill-down.
+- **Automatic updates**: approving an underlying model recalculates and publishes every portfolio that uses it (*Underlying Model Updated* in the audit trail).
+- **Status flows up**: an underlying model that is Rejected or Needs Attention puts the portfolio in Needs Attention, with a link to it.
+- Every underlying model shows where it is used (UBS view only; try `?persona=polen`, where nothing changes).
 
 ## Proposed improvements (default) vs. today's behavior
 
@@ -83,6 +89,6 @@ These behaviors weren't visible in the screenshots, so they are best guesses:
 - `js/data.js` — mock strategies, securities, users, snapshots
 - `js/app.js` — routing, screens, interactions
 - `js/xlsx.js` — dependency-free Excel writer/reader (works without CDN access)
-- `js/blocks.js` — Building Blocks (composition, consolidated holdings, auto-recalculation)
+- `js/portfolios.js` — MyWay and Multi-Manager Portfolios (composition, consolidated holdings, auto-recalculation)
 - `js/import.js` — Import drawer (paste/drop/type, detection, preview, undo)
 - `js/improvements.js` — improvements log (net new vs. production)

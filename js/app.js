@@ -445,14 +445,20 @@
     var cl = $('[data-act="f-clear"]'); if (cl) cl.classList.toggle('on', !!(n || filterCount(S.list.applied)));
   }
 
+  /* small tag before the name: MW = MyWay Portfolio, MM = Multi-Manager Portfolio, BB = UBS Building Block */
+  function typeTag(m) {
+    if (m.parent) return '<span class="bb-tag ' + (m.family === 'myway' ? 't-mw' : 't-mm') + '" data-tip="' + esc(B.label(m).fam) + ': ' + m.sleeves.length + ' ' + B.label(m).many + '" data-tip-anchor>' + (m.family === 'myway' ? 'MW' : 'MM') + '</span>';
+    if (B.isBlock(m)) return '<span class="bb-tag t-bb" data-tip="UBS Building Block" data-tip-anchor>BB</span>';
+    return '';
+  }
   function rowHtml(m) {
     var locked = lockedBy(m);
     return '<tr>' +
       '<td data-tip="' + esc(m.manager) + '" data-tip-trunc>' + esc(m.manager) + '</td>' +
-      '<td data-tip="' + esc(m.name) + '" data-tip-trunc>' + (m.block ? '<span class="bb-tag" data-tip="UBS CIO Building Block: ' + m.sleeves.length + ' underlying strategies" data-tip-anchor>BB</span>' : '') + '<a class="lnk" href="#/model/' + encodeURIComponent(m.access) + '/info/details"' + (locked ? ' data-locked="' + esc(m.access) + '"' : '') + '>' + esc(m.name) + '</a></td>' +
+      '<td data-tip="' + esc(m.name) + '" data-tip-trunc>' + typeTag(m) + '<a class="lnk" href="#/model/' + encodeURIComponent(m.access) + '/info/details"' + (locked ? ' data-locked="' + esc(m.access) + '"' : '') + '>' + esc(m.name) + '</a></td>' +
       '<td class="b">' + esc(m.access) + '</td>' +
       '<td class="b">' + (m.swp ? esc(m.swp) : '-') + '</td>' +
-      (m.block ? '<td data-tip="Building Block (' + esc(m.type) + ')" data-tip-anchor>Block</td>' : '<td>' + esc(m.type) + '</td>') +
+      (m.parent ? '<td data-tip="' + esc(B.label(m).fam) + ' (' + esc(m.type) + ')" data-tip-anchor>Portfolio</td>' : '<td>' + esc(m.type) + '</td>') +
       '<td class="r">' + num(m.accounts, 0) + '</td>' +
       '<td class="r">' + num(m.aum, 2) + '</td>' +
       '<td>' + esc(m.modifiedUser) + '</td>' +
@@ -498,7 +504,7 @@
   function effStatus(m) { return m.draft && m.draft.live && m.draft.prev ? m.draft.prev.status : m.status; }
   function reasonFor(m) {
     var st = effStatus(m), ev, e;
-    if (m.block && m.status !== 'In Progress') return B.reason(m);
+    if (m.parent && m.status !== 'In Progress') return B.reason(m);
     if (st === 'Rejected') {
       ev = eventsDesc(m); e = ev.filter(function (x) { return x.event === 'Model Rejected'; })[0];
       return { kind: 'rej', title: 'Rejected', text: e ? e.details.replace(/^Rejected for the following reason\(s\):\s*/i, '').trim() : 'No reason recorded.', ts: e && e.ts, user: e && e.user };
@@ -586,7 +592,8 @@
       '<div class="mf"><span class="k">Modified</span><span class="v">' + fmt.full(m.modified) + '</span></div>' +
       '<div class="mf"><span class="k">Confirmed</span><span class="v">' + (m.confirmed ? fmt.full(m.confirmed) : 'N/A') + '</span></div>' +
       '<div class="mf"><span class="k">Status</span><span class="v">' + statusHtml(m.status) + '</span></div>' +
-      (m.block ? '<div class="mf"><span class="k">Model Type</span><span class="v">Building Block &middot; ' + m.sleeves.length + ' underlying</span></div>' : '') +
+      (m.parent ? '<div class="mf"><span class="k">Model Type</span><span class="v">' + B.label(m).fam + ' &middot; ' + m.sleeves.length + ' ' + B.label(m).many + '</span></div>' :
+        B.isBlock(m) ? '<div class="mf"><span class="k">Model Type</span><span class="v">UBS Building Block</span></div>' : '') +
       '<div class="meta-tools"><button class="icon-btn" data-act="model-export" data-acc="' + esc(m.access) + '" data-tip="Download" data-tip-anchor>' + I.download + '</button><button class="icon-btn" data-act="print" data-tip="Print" data-tip-anchor>' + I.print + '</button></div>';
   }
 
@@ -599,7 +606,7 @@
       return;
     }
     if (!SUBS[tab]) tab = 'info';
-    var subs = m.block && tab === 'info' ? B.SUBS : SUBS[tab];
+    var subs = m.parent && tab === 'info' ? B.SUBS : SUBS[tab];
     if (!subs.some(function (s) { return s[0] === sub; })) sub = subs[0][0];
     var base = '#/model/' + encodeURIComponent(access) + '/';
     app.innerHTML =
@@ -615,7 +622,7 @@
           '<div id="d-content"></div>' +
         '</section>' +
       '</div>';
-    if (m.block && (sub === 'details' || sub === 'holdings')) { (sub === 'details' ? B.renderComposition : B.renderHoldings)(m, $('#d-content')); return; }
+    if (m.parent && (sub === 'details' || sub === 'holdings')) { (sub === 'details' ? B.renderComposition : B.renderHoldings)(m, $('#d-content')); return; }
     ({ details: renderModelDetails, options: renderOptions, snapshot: renderSnapshot, today: renderToday, sma: renderSma, performance: renderPerformance, profile: renderProfile })[sub](m, $('#d-content'));
   }
 
@@ -941,7 +948,7 @@
     route();
     successCard(m, 'Model Approved', changeSummary(res.changes) + blocksNote(res.blocks), res.ts);
   }
-  function blocksNote(bl) { return bl && bl.length ? ' · Building Block' + (bl.length > 1 ? 's ' : ' ') + bl.map(function (b) { return b.access; }).join(', ') + ' auto-updated' : ''; }
+  function blocksNote(bl) { return !bl || !bl.length ? '' : bl.length > 2 ? ' · ' + bl.length + ' portfolios auto-updated' : ' · Portfolio' + (bl.length > 1 ? 's ' : ' ') + bl.map(function (b) { return b.access; }).join(', ') + ' auto-updated'; }
   /* CONFIRM: once per visit to the model screen. */
   var confirmedHere = null;
   function confirmModel(m) {
@@ -1261,7 +1268,7 @@
         break;
       }
       case 'model-export':
-        if (m && m.block) { B.exportBlock(m); break; }
+        if (m && m.parent) { B.exportBlock(m); break; }
         if (m) {
           // same importable columns first (so it pastes straight back), reference columns greyed at the end
           var rowsX = getDraft(m).rows.filter(function (r) { return r.ticker !== CASH; }).map(function (r) {
@@ -1378,8 +1385,8 @@
     if (skipRoute) { skipRoute = false; return; }
     route(); window.scrollTo(0, 0);
   });
-  /* Building Blocks (js/blocks.js) */
-  var B = window.MDPBlocksInit({
+  /* Portfolios: MyWay + Multi-Manager (js/portfolios.js) */
+  var B = window.MDPPortfoliosInit({
     S: S, SEED: SEED, SEC: SEC, CASH: CASH, EPS: EPS, I: I, esc: esc, num: num, round3: round3, fmt: fmt, byAccess: byAccess,
     persona: persona, isAdmin: isAdmin, displayName: displayName, todayISO: todayISO, nowStamp: nowStamp, eventsDesc: eventsDesc,
     statusHtml: statusHtml, setBtn: setBtn, toast: toast, modal: modal, closeModal: closeModal, successCard: successCard,

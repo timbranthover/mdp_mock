@@ -70,8 +70,22 @@
       ['SHOP', 'SHOPIFY INC CL A', 162.40, '82509L107', 1],
       ['TT', 'TRANE TECHNOLOGIES PLC', 448.90, 'G8994E103', 0]
     ],
-    // added for the curated Building Block strategies (kept out of the random pools so other models don't change)
+    // added for the curated strategies used in portfolios (kept out of the random pools so other models don't change)
     growth2: [
+      ['BABA', 'ALIBABA GROUP HLDG SPON ADR', 128.40, '01609W102', 1],
+      ['PDD', 'PDD HOLDINGS INC ADR', 121.70, '722304102', 1],
+      ['INFY', 'INFOSYS LTD SPON ADR', 18.90, '456788108', 1],
+      ['IBN', 'ICICI BANK LTD ADR', 32.60, '45104G104', 1],
+      ['ITUB', 'ITAU UNIBANCO HLDG SA ADR', 7.40, '465562106', 1],
+      ['NU', 'NU HOLDINGS LTD CL A', 15.80, 'G6683N103', 0],
+      ['VALE', 'VALE S A SPON ADR', 11.20, '91912E105', 1],
+      ['PBR', 'PETROLEO BRASILEIRO SA ADR', 13.10, '71654V408', 1],
+      ['TM', 'TOYOTA MOTOR CORP ADR', 192.40, '892331307', 1],
+      ['UL', 'UNILEVER PLC SPON ADR', 61.30, '904767704', 1],
+      ['HSBC', 'HSBC HLDGS PLC SPON ADR', 66.80, '404280406', 1],
+      ['SHEL', 'SHELL PLC SPON ADR', 72.10, '780259305', 1],
+      ['MUFG', 'MITSUBISHI UFJ FINL GRP ADR', 14.20, '606822104', 1],
+      ['SNY', 'SANOFI SPON ADR', 49.60, '80105N105', 1],
       ['ORCL', 'ORACLE CORP', 236.40, '68389X105', 0],
       ['LRCX', 'LAM RESEARCH CORP', 148.20, '512807306', 0],
       ['KLAC', 'KLA CORP', 1088.50, '482480100', 0],
@@ -281,6 +295,21 @@
       ['LIN', 1.9], ['MSFT', 1.9], ['AVGO', 1.8], ['TMO', 1.6]] },
     N622: { cash: 1.5, rows: [['VTI', 36], ['VXUS', 22], ['BND', 26.5], ['BNDX', 11], ['VGIT', 3]] },
     N621: { cash: 2.0, rows: [['VTI', 24], ['VXUS', 14], ['BND', 40], ['BNDX', 17], ['VGIT', 3]] },
+    /* UBS CIO Building Blocks (illustrative): each looks like a single third-party SMA */
+    B301: { cash: 1.5, rows: [['NVDA', 8], ['MSFT', 8], ['AAPL', 7], ['AMZN', 6], ['GOOG', 5.5], ['META', 5], ['AVGO', 5], ['LLY', 4], ['V', 3.6], ['MA', 3.2], ['NFLX', 3], ['NOW', 3], ['ORCL', 2.8],
+      ['COST', 2.6], ['ISRG', 2.4], ['UBER', 2.2], ['AMD', 2.2], ['ADBE', 2], ['CDNS', 2], ['KLAC', 2], ['SPGI', 1.8], ['ABNB', 1.6], ['ORLY', 1.6], ['IDXX', 1.4], ['CSGP', 1.2]] },
+    B302: { cash: 2.0, rows: [['JPM', 5], ['BRK/B', 5], ['XOM', 4.5], ['JNJ', 4.2], ['UNH', 3.8], ['CVX', 3.4], ['PG', 3.4], ['WMT', 3.2], ['HD', 3], ['ABBV', 3], ['CSCO', 3], ['GS', 2.8], ['MRK', 2.8],
+      ['CAT', 2.6], ['RTX', 2.5], ['KO', 2.4], ['PEP', 2.4], ['HON', 2.3], ['TMO', 2.3], ['LIN', 2.2], ['NEE', 2.2], ['UNP', 2.1], ['VZ', 2], ['LMT', 2], ['TXN', 2], ['MCD', 2], ['SO', 1.8], ['PM', 1.8], ['CEG', 1.6]] },
+    B303: { cash: 1.0, rows: [['MSFT', 6.5], ['NVDA', 6], ['AAPL', 6], ['AMZN', 4.2], ['GOOG', 4], ['META', 3], ['AVGO', 2.6], ['BRK/B', 2.2], ['JPM', 2.2], ['LLY', 2], ['V', 1.8], ['XOM', 1.5], ['UNH', 1.4], ['MA', 1.4],
+      ['COST', 1.3], ['HD', 1.3], ['PG', 1.3], ['JNJ', 1.3], ['ABBV', 1.2], ['WMT', 1.2], ['NFLX', 1.1], ['ORCL', 1.1], ['CSCO', 1], ['KO', 1], ['MRK', 1], ['PEP', 1], ['CVX', 1], ['GE', 1], ['CAT', 1],
+      ['LIN', 0.9], ['TMO', 0.9], ['ISRG', 0.9], ['SPGI', 0.9], ['RTX', 0.9], ['NOW', 0.9], ['GS', 0.9], ['UNP', 0.8], ['HON', 0.8], ['NEE', 0.8], ['TXN', 0.8], ['AMD', 0.8]] },
+    B304: { cash: 2.5, rows: [['JPM', 4.6], ['JNJ', 4.4], ['XOM', 4.2], ['PG', 4], ['ABBV', 4], ['CVX', 3.8], ['KO', 3.6], ['PEP', 3.6], ['MRK', 3.4], ['HD', 3.4], ['CSCO', 3.2], ['VZ', 3.2], ['PM', 3.2], ['MCD', 3],
+      ['TXN', 3], ['NEE', 3], ['SO', 3], ['LMT', 2.8], ['HON', 2.8], ['UNP', 2.6], ['RTX', 2.6], ['MSFT', 2.6], ['AVGO', 2.6], ['WMT', 2.4], ['LIN', 2.2], ['GS', 2.2], ['CAT', 2.2]] },
+    B305: { cash: 2.5, rows: [['ASML', 6], ['SAP', 5.4], ['NVO', 5], ['AZN', 5], ['NSRGY', 4.6], ['LVMUY', 4.2], ['SONY', 4.2], ['TM', 4.2], ['SAFRY', 4], ['RELX', 4], ['HSBC', 3.8], ['SHEL', 3.8], ['UL', 3.6],
+      ['RYCEY', 3.6], ['HESAY', 3.6], ['MUFG', 3.4], ['LRLCY', 3.4], ['AAGIY', 3.4], ['SNY', 3.2], ['TOELY', 3.2], ['SHOP', 3]] },
+    B306: { cash: 3.0, rows: [['IEMG', 25], ['TSM', 12], ['TCEHY', 9], ['HDB', 6], ['BABA', 6], ['MELI', 5.5], ['IBN', 5], ['INFY', 4.5], ['ITUB', 4], ['NU', 4], ['PDD', 4], ['VALE', 3.5], ['PBR', 3]] },
+    B307: { cash: 2.0, rows: [['AGG', 30], ['IUSB', 20], ['LQD', 15], ['TIP', 10], ['SHY', 10], ['MINT', 7], ['TLT', 6]] },
+    B308: { cash: 2.0, rows: [['MUB', 40], ['VTEB', 30], ['CGMU', 18], ['CGHM', 10]] },
     N534: { cash: 2.8, rows: [['CGCP', 37], ['CGSD', 20], ['CGMU', 14], ['CGDV', 12], ['CGUS', 9], ['CGIE', 5.2]] }
   };
   function buildHoldings(model) {
@@ -325,7 +354,7 @@
   var M = {
     t12: '12th Street Asset Management', af: 'American Funds Models', bk: 'Blackrock Models',
     cg: 'Capital Group Models', pl: 'Polen Capital Management, LLC', vg: 'Vanguard Models',
-    cio: 'UBS CIO Building Blocks'
+    bb: 'UBS CIO Building Blocks', mw: 'UBS CIO MyWay Portfolios', mm: 'UBS CIO Multi-Manager Portfolios'
   };
   var DEFS = [
     [M.t12, '12th Street Tactical Multi-Asset - Bal', 'N601', '', 'Dynamic', 192, 84.16, 'multi', 'In Progress', '2026-10-27 12:19:17.500213', 'qa', '2026-10-08 14:09:00', 'qa'],
@@ -355,6 +384,14 @@
     [M.cg, 'Capital Group Multi-Sector Income', 'N530', 'Z9NT', 'Static', 87, 29.18, 'capgroup', 'In Progress', '2026-10-27 17:22:40.019876', 'admin', null, null],
     [M.cg, 'Capital Group U.S. Equity SMA', 'N541', '', 'Static', 388, 142.61, 'capgroup', 'Approved', '2026-10-23 15:41:07.218843', 'ho', '2026-10-01 10:20:00', 'qa'],
     [M.t12, '12th Street US Dividend Value', 'N602', '', 'Static', 247, 58.33, 'multi', 'Approved', '2026-10-22 11:36:52.604119', 'qa', '2026-10-06 13:05:00', 'qa'],
+    [M.bb, 'UBS US Large Cap Growth Block', 'B301', '', 'Static', 0, 0.00, 'ubsblock', 'Approved', '2026-10-27 10:14:02.551873', 'admin', '2026-10-27 10:30:00', 'admin'],
+    [M.bb, 'UBS US Large Cap Value Block', 'B302', '', 'Static', 0, 0.00, 'ubsblock', 'In Progress', '2026-11-02 09:41:18.204611', 'dr', '2026-10-20 11:15:00', 'admin'],
+    [M.bb, 'UBS US Tax-Aware Core Block', 'B303', '', 'Static', 0, 0.00, 'ubsblock', 'Approved', '2026-10-28 14:22:47.093318', 'admin', '2026-10-28 15:00:00', 'admin'],
+    [M.bb, 'UBS US Dividend Income Block', 'B304', '', 'Static', 0, 0.00, 'ubsblock', 'Approved', '2026-10-26 11:05:31.770142', 'admin', null, null],
+    [M.bb, 'UBS International Developed ADR Block', 'B305', '', 'Static', 0, 0.00, 'ubsblock', 'Approved', '2026-10-29 16:37:09.448215', 'admin', '2026-10-30 09:20:00', 'admin'],
+    [M.bb, 'UBS Emerging Markets ADR Block', 'B306', '', 'Static', 0, 0.00, 'ubsblock', 'Needs Attention', '2026-10-30 07:12:55.618802', 'sys', '2026-10-16 10:05:00', 'admin'],
+    [M.bb, 'UBS Core Fixed Income Block', 'B307', '', 'Static', 0, 0.00, 'ubsblock', 'Approved', '2026-10-13 13:48:20.305571', 'admin', '2026-10-13 14:10:00', 'admin'],
+    [M.bb, 'UBS Municipal Income Block', 'B308', '', 'Static', 0, 0.00, 'ubsblock', 'Approved', '2026-10-28 10:03:44.817264', 'admin', '2026-10-28 10:30:00', 'admin'],
     [M.pl, 'Polen Focus Growth Equity', 'N611', '', 'Static', 1204, 312.55, 'polen', 'Approved', '2026-10-21 14:02:11.903301', 'qa', '2026-10-21 14:30:00', 'qa'],
     [M.pl, 'Polen Global Growth', 'N612', '', 'Static', 344, 96.02, 'polen', 'Needs Attention', '2026-10-21 11:04:56.393805', 'sys', '2026-10-03 10:12:00', 'qa'],
     [M.pl, 'Polen Small Company Growth', 'N613', '', 'Static', 61, 12.84, 'polen', 'Rejected', '2026-10-24 11:27:05.664912', 'admin', null, null],
@@ -376,7 +413,8 @@
   PROFILE_USERS[M.vg] = [['Whitfield, Cole', 'mdp.ext.cwhitfield@ubs.com', '610-555-0129'], ['Iyer, Priya', 'mdp.ext.piyer@ubs.com', '610-555-0155']];
   var SHARED_USERS = [['Turner, Alla', 'mdp.qa.user01@ubs.com', ''], ['MDC, ART', 'mdp.qa.user03@ubs.com', ''], ['MDC, ART', 'testfailbounceback@example.com', ''], ['QASIT, ICSTOMMQA', 'mdp.qa.user03@ubs.com', ''], ['Test, ICSTOMMC', '', '']];
 
-  var MINIMUMS = { 'multi': '$25,000', 'afunds': '$25,000', 'bktax': '$10,000', 'bkcore': '$10,000', 'ucits': '$50,000', 'capgroup': '$10,000', 'polen': '$100,000', 'vanguard': '$10,000' };
+  PROFILE_USERS[M.bb] = [['CIO Portfolio Construction', 'cio.blocks.qa@ubs.com', '']];
+  var MINIMUMS = { 'ubsblock': '$25,000', 'multi': '$25,000', 'afunds': '$25,000', 'bktax': '$10,000', 'bkcore': '$10,000', 'ucits': '$50,000', 'capgroup': '$10,000', 'polen': '$100,000', 'vanguard': '$10,000' };
 
   /* ---------- snapshots & events ---------- */
   function jitter(rows, seed) {
@@ -464,13 +502,14 @@
       m.events = buildEvents(m);
       return m;
     });
-    return models.concat(buildBlocks(models));
+    return models.concat(buildPortfolios(models));
   }
 
-  /* ---------- Building Blocks (UBS CIO parent strategies built from third-party SMA models) ----------
-   * A block owns only its allocation across underlying models ("sleeves"). Its holdings are the
-   * consolidated look-through model: SUM(sleeve allocation x security weight in that sleeve).
-   * Underlying models stay separate. Their managers never see the block.
+  /* ---------- Portfolios (parent models made of other models) ----------
+   * MyWay Portfolio:          UBS CIO portfolio made only of UBS Building Blocks (fixed menu, by client profile).
+   * Multi-Manager Portfolio:  UBS CIO portfolio made only of third-party SMA models. Their managers never see it.
+   * A portfolio owns only its allocation across underlying models ("sleeves"). Its holdings are the consolidated
+   * look-through model: SUM(sleeve allocation x security weight in that sleeve). One level only.
    */
   function consolidate(sleeves, byAccess) {
     var acc = {}, contrib = {};
@@ -491,55 +530,72 @@
     rows.unshift({ ticker: 'USD Cash', weight: +(allocTot - used).toFixed(3) });
     return { holdings: rows, contrib: contrib };
   }
-  // [access, name, type, accounts, AUM(M), sleeves [[access, alloc]], created, last block update, confirmed|null]
-  var BLOCK_DEFS = [
-    // growth + core + value: heavy, realistic overlap in mega-cap names
-    ['B101', 'MyWay US Equity Building Block', 'Static', 214, 61.42, [['N611', 35], ['N541', 40], ['N602', 25]], '2026-10-01 09:12:44.210331', '2026-10-15 10:02:18.553201', '2026-10-15 10:30:00.118204'],
-    // ~65% equity (US growth, US core, global, dividend+muni) / ~35% bonds via Vanguard and BlackRock sleeves
-    ['B102', 'MyWay Global Multi-Asset Building Block', 'Static', 96, 28.75, [['N533', 25], ['N622', 25], ['N612', 20], ['N529', 15], ['N541', 15]], '2026-10-02 14:31:05.118842', '2026-10-09 11:46:30.774410', null],
-    // all-equity, global: two global stock pickers + a US core anchor
-    ['B103', 'MyWay Global Equity Building Block', 'Static', 158, 47.90, [['N533', 40], ['N612', 35], ['N541', 25]], '2026-10-05 10:44:12.903217', '2026-10-19 14:12:51.330942', '2026-10-20 09:05:00.441093'],
-    // ~70% bonds: core bond ETFs, short duration and munis, with a dividend-stock sleeve for income
-    ['B104', 'MyWay Conservative Income Building Block', 'Static', 302, 88.14, [['N621', 45], ['N534', 25], ['N602', 20], ['N529', 10]], '2026-10-06 15:20:33.671205', '2026-10-22 16:48:09.215538', '2026-10-23 11:40:00.902114'],
-    // growth tilt: concentrated US + global growth with a smaller core/global sleeve
-    ['B105', 'MyWay Growth Building Block', 'Static', 131, 52.66, [['N611', 40], ['N612', 30], ['N541', 20], ['N533', 10]], '2026-10-07 11:02:47.558120', '2026-10-21 15:26:40.127784', null]
+  var FAMILY = { myway: { manager: M.mw, label: 'MyWay Portfolio' }, mm: { manager: M.mm, label: 'Multi-Manager Portfolio' } };
+  // [access, family, name, accounts, AUM(M), sleeves [[access, alloc]], created, last update, confirmed|null, profile [region, tax, objective]]
+  var PORTFOLIO_DEFS = [
+    /* MyWay: a fixed menu covering the main client profiles (region x tax treatment x objective) */
+    ['W201', 'myway', 'MyWay US Equity Growth', 486, 172.30, [['B301', 45], ['B303', 35], ['B302', 20]], '2026-10-01 09:10:12.201554', '2026-10-28 15:20:41.118306', '2026-10-28 16:00:00.302118', ['US', 'Taxable', 'Growth']],
+    ['W202', 'myway', 'MyWay US Equity Tax-Aware', 812, 301.64, [['B303', 60], ['B301', 20], ['B304', 20]], '2026-10-01 09:14:55.873310', '2026-10-28 15:22:09.551870', '2026-10-28 16:05:00.110482', ['US', 'Tax-aware', 'Core equity']],
+    ['W203', 'myway', 'MyWay Global Equity', 233, 84.17, [['B303', 35], ['B305', 25], ['B301', 15], ['B302', 15], ['B306', 10]], '2026-10-02 10:31:40.664120', '2026-10-29 17:02:15.904553', null, ['Global', 'Taxable', 'Growth']],
+    ['W204', 'myway', 'MyWay Balanced Tax-Aware', 1104, 418.92, [['B308', 40], ['B303', 35], ['B305', 15], ['B301', 10]], '2026-10-02 10:40:06.217844', '2026-10-28 15:31:52.660291', '2026-10-28 16:10:00.581036', ['Global', 'Tax-aware', 'Balanced 60/40']],
+    ['W205', 'myway', 'MyWay Income', 377, 129.55, [['B307', 50], ['B304', 35], ['B305', 15]], '2026-10-03 11:02:27.481935', '2026-10-29 17:05:33.270118', null, ['Global', 'Taxable', 'Income']],
+    ['W206', 'myway', 'MyWay Conservative Tax-Aware', 598, 207.81, [['B308', 55], ['B303', 20], ['B307', 15], ['B304', 10]], '2026-10-03 11:15:50.009372', '2026-10-28 15:40:18.736641', '2026-10-28 16:15:00.913205', ['US', 'Tax-aware', 'Conservative']],
+    /* Multi-Manager: UBS allocation across third-party SMAs */
+    ['M101', 'mm', 'Multi-Manager US Equity Portfolio', 214, 61.42, [['N611', 35], ['N541', 40], ['N602', 25]], '2026-10-01 09:12:44.210331', '2026-10-15 10:02:18.553201', '2026-10-15 10:30:00.118204'],
+    ['M102', 'mm', 'Multi-Manager Global Multi-Asset Portfolio', 96, 28.75, [['N533', 25], ['N622', 25], ['N612', 20], ['N529', 15], ['N541', 15]], '2026-10-02 14:31:05.118842', '2026-10-09 11:46:30.774410', null],
+    ['M103', 'mm', 'Multi-Manager Global Equity Portfolio', 158, 47.90, [['N533', 40], ['N612', 35], ['N541', 25]], '2026-10-05 10:44:12.903217', '2026-10-19 14:12:51.330942', '2026-10-20 09:05:00.441093'],
+    ['M104', 'mm', 'Multi-Manager Conservative Income Portfolio', 302, 88.14, [['N621', 45], ['N534', 25], ['N602', 20], ['N529', 10]], '2026-10-06 15:20:33.671205', '2026-10-22 16:48:09.215538', '2026-10-23 11:40:00.902114'],
+    ['M105', 'mm', 'Multi-Manager Growth Portfolio', 131, 52.66, [['N611', 40], ['N612', 30], ['N541', 20], ['N533', 10]], '2026-10-07 11:02:47.558120', '2026-10-21 15:26:40.127784', null]
   ];
-  function buildBlocks(models) {
+  function buildPortfolios(models) {
     var by = {}; models.forEach(function (m) { by[m.access] = m; });
-    return BLOCK_DEFS.map(function (d) {
-      var b = {
-        manager: M.cio, name: d[1], access: d[0], swp: '', type: d[2], accounts: d[3], aum: d[4], kind: 'block', block: true,
+    var parents = PORTFOLIO_DEFS.map(function (d) {
+      var fam = FAMILY[d[1]];
+      var p = {
+        manager: fam.manager, name: d[2], access: d[0], swp: '', type: 'Static', accounts: d[3], aum: d[4], kind: 'portfolio', parent: true, family: d[1], profile: d[9] || null,
         status: 'Approved', modified: d[7], modifiedUser: MDP_USERS.admin, confirmed: d[8] || null, confirmedUser: d[8] ? MDP_USERS.admin : null,
-        minimum: '$250,000', emails: '', tlh: '', pending: null, communications: [],
+        minimum: d[1] === 'myway' ? '$100,000' : '$250,000', emails: '', tlh: '', pending: null, communications: [],
         sleeves: d[5].map(function (x) { return { access: x[0], alloc: x[1] }; }),
         users: [['MDC, ART', 'mdp.qa.user03@ubs.com', ''], ['CIO Portfolio Construction', 'cio.blocks.qa@ubs.com', '']]
       };
-      b.holdings = consolidate(b.sleeves, by).holdings;
-      b.snapshots = {};
-      ['2026-10-21', '2026-10-14'].forEach(function (dt, i) { b.snapshots[dt] = jitter(b.holdings, hashStr(b.access + dt) + i); });
+      p.holdings = consolidate(p.sleeves, by).holdings;
+      p.snapshots = {};
+      ['2026-10-21', '2026-10-14'].forEach(function (dt, i) { p.snapshots[dt] = jitter(p.holdings, hashStr(p.access + dt) + i); });
       var ev = [], seq = 0;
-      ev.push({ ts: d[6], event: 'Building Block Created', user: MDP_USERS.admin, details: 'Created with ' + b.sleeves.length + ' underlying strategies', seq: seq++ });
-      var created = b.sleeves.map(function (s) { return { ticker: s.access, from: 0, to: s.alloc }; });
-      ev.push({ ts: d[6], event: 'Building Block Approved', user: MDP_USERS.admin, details: 'Initial allocation approved and published', changes: created, seq: seq++ });
-      ev.push({ ts: d[7], event: 'Building Block Updated By Admin', user: MDP_USERS.admin, details: 'Allocation review', changes: created.slice(0, 2).map(function (c, i) { return { ticker: c.ticker, from: c.to + (i ? -2.5 : 2.5), to: c.to }; }), seq: seq++ });
-      ev.push({ ts: d[7], event: 'Building Block Approved', user: MDP_USERS.admin, details: 'Consolidated model recalculated and published', seq: seq++ });
-      if (d[8]) ev.push({ ts: d[8], event: 'Confirmed', user: MDP_USERS.admin, details: 'Building Block allocation confirmed', seq: seq++ });
-      b.sleeves.forEach(function (s) {
+      ev.push({ ts: d[6], event: 'Portfolio Created', user: MDP_USERS.admin, details: fam.label + ' created with ' + p.sleeves.length + ' ' + (d[1] === 'myway' ? 'building blocks' : 'underlying strategies'), seq: seq++ });
+      var created = p.sleeves.map(function (s) { return { ticker: s.access, from: 0, to: s.alloc }; });
+      ev.push({ ts: d[6], event: 'Portfolio Approved', user: MDP_USERS.admin, details: 'Initial allocation approved and published', changes: created, seq: seq++ });
+      ev.push({ ts: d[7], event: 'Portfolio Updated By Admin', user: MDP_USERS.admin, details: 'Allocation review', changes: created.slice(0, 2).map(function (c, i) { return { ticker: c.ticker, from: c.to + (i ? -2.5 : 2.5), to: c.to }; }), seq: seq++ });
+      ev.push({ ts: d[7], event: 'Portfolio Approved', user: MDP_USERS.admin, details: 'Consolidated model recalculated and published', seq: seq++ });
+      if (d[8]) ev.push({ ts: d[8], event: 'Confirmed', user: MDP_USERS.admin, details: 'Portfolio allocation confirmed', seq: seq++ });
+      p.sleeves.forEach(function (s) {
         var m = by[s.access];
-        if (m && m.modified > d[6] && m.status === 'Needs Attention') ev.push({ ts: m.modified, event: 'Underlying Model Needs Attention', user: 'System', details: s.access + ' (' + m.name + ') set to Needs Attention by a mandatory corporate action. Building Block set to Needs Attention; it keeps using the last approved model.', seq: seq++ });
-        else if (m && m.modified > d[6]) ev.push({ ts: m.modified, event: 'Underlying Model Updated', user: 'System', details: s.access + ' (' + m.name + ') updated by ' + m.modifiedUser + '. Consolidated model recalculated and auto-published.', seq: seq++ });
+        if (!m || m.modified <= d[6]) return;
+        if (m.status === 'Needs Attention') ev.push({ ts: m.modified, event: 'Underlying Model Needs Attention', user: 'System', details: s.access + ' (' + m.name + ') set to Needs Attention by a mandatory corporate action. Portfolio set to Needs Attention; it keeps using the last approved model.', seq: seq++ });
+        else if (m.status === 'In Progress') return;
+        else ev.push({ ts: m.modified, event: 'Underlying Model Updated', user: 'System', details: s.access + ' (' + m.name + ') updated by ' + m.modifiedUser + '. Consolidated model recalculated and auto-published.', seq: seq++ });
       });
       ev.sort(function (a, b2) { return a.ts < b2.ts ? -1 : a.ts > b2.ts ? 1 : a.seq - b2.seq; });
-      b.events = ev;
-      return b;
+      p.events = ev;
+      return p;
     });
+    // AUM / accounts of a UBS Building Block = what flows into it from the MyWay Portfolios that use it
+    models.forEach(function (m) {
+      if (m.manager !== M.bb) return;
+      var aum = 0, acc = 0;
+      parents.forEach(function (p) { p.sleeves.forEach(function (s) { if (s.access === m.access) { aum += p.aum * s.alloc / 100; acc += p.accounts; } }); });
+      m.aum = +aum.toFixed(2); m.accounts = acc;
+    });
+    return parents;
   }
 
   window.MDP_SEED = {
-    version: 7,
-    managers: [M.bk, M.af, M.pl, M.cg, M.vg, M.t12, M.cio], // order used in the Model List header
-    managerOptions: [M.t12, M.af, M.bk, M.cg, M.pl, M.vg, M.cio], // order used in the Manager filter
-    blockManager: M.cio,
+    version: 8,
+    managers: [M.bk, M.af, M.pl, M.cg, M.vg, M.t12, M.bb, M.mw, M.mm], // order used in the Model List header
+    managerOptions: [M.t12, M.af, M.bk, M.cg, M.pl, M.vg, M.bb, M.mw, M.mm], // order used in the Manager filter
+    ubsManagers: [M.bb, M.mw, M.mm],
+    blockManager: M.bb,
+    families: FAMILY,
     consolidate: consolidate,
     securities: SECURITIES,
     securitiesById: BY_ID,

@@ -623,7 +623,12 @@ tbody.g.open
 .imp-rm-l { border: 1px solid #c8102e !important; color: #8a1023; background: #fff !important; padding: 2px 8px; font-size: 11px; font-weight: 700; }
 .imp-rm-l:hover { background: #c8102e !important; color: #fff !important; }
 
-/* ---------- Building Blocks ---------- */
+/* ---------- Portfolios (MyWay / Multi-Manager) and UBS Building Blocks ---------- */
+.bb-tag.t-mw { background: #2f6f9f; } .bb-tag.t-mm { background: #5a5d5c; } .bb-tag.t-bb { background: #fff; color: #2f6f9f; box-shadow: inset 0 0 0 1px #2f6f9f; }
+.pf-prof { display: flex; align-items: center; gap: 8px; margin: -2px 0 14px; }
+.pf-prof .k { font-size: 9.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #555; margin-right: 4px; }
+.pf-tag { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 10px; border: 1px solid #d3e2e8; background: #eef3f5; font-size: 11.5px; font-weight: 700; color: #1f3d4a; }
+.pf-tag em { font-style: normal; font-weight: 400; color: #5b7884; font-size: 10.5px; }
 .bb-tag { display: inline-block; font-size: 8.5px; font-weight: 700; letter-spacing: .06em; color: #fff; background: #5a5d5c; padding: 1px 4px; margin-right: 6px; vertical-align: 1px; cursor: help; }
 .why-blk { background: #f1f4f5; border-color: #d3dde1; }
 .why-blk > svg { color: #2d5a6b; width: 16px; height: 16px; }
