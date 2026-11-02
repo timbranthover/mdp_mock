@@ -177,8 +177,8 @@
       if (sb && !why && errs.length) sb.setAttribute('data-warn', errs.map(function (r) { return r.access; }).join(', ')); else if (sb) sb.removeAttribute('data-warn');
     }
     function drawUpdates(b) {
-      var ev = C.eventsDesc(b).filter(function (e) { return e.event === 'Underlying Model Updated'; }).slice(0, 5);
-      $('#bb-updates').innerHTML = '<div class="bb-up-h">Underlying model updates <span>Recalculated and published automatically. Each update is logged in the audit trail.</span></div>' +
+      var ev = C.eventsDesc(b).filter(function (e) { return e.event === 'Underlying Model Updated' || e.event === 'Underlying Model Needs Attention'; }).slice(0, 5);
+      $('#bb-updates').innerHTML = '<div class="bb-up-h">Underlying model activity <span>Updates are recalculated and published automatically. Everything is logged in the audit trail.</span></div>' +
         (ev.length ? ev.map(function (e) { return '<div class="bb-up"><span class="bb-up-t">' + fmt.conf(e.ts) + '</span><span>' + esc(e.details) + '</span></div>'; }).join('') : '<div class="bb-up muted">No updates yet.</div>');
     }
 

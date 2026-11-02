@@ -452,7 +452,7 @@
       '<td data-tip="' + esc(m.name) + '" data-tip-trunc>' + (m.block ? '<span class="bb-tag" data-tip="UBS CIO Building Block: ' + m.sleeves.length + ' underlying strategies" data-tip-anchor>BB</span>' : '') + '<a class="lnk" href="#/model/' + encodeURIComponent(m.access) + '/info/details"' + (locked ? ' data-locked="' + esc(m.access) + '"' : '') + '>' + esc(m.name) + '</a></td>' +
       '<td class="b">' + esc(m.access) + '</td>' +
       '<td class="b">' + (m.swp ? esc(m.swp) : '-') + '</td>' +
-      '<td>' + esc(m.block ? 'Building Block' : m.type) + '</td>' +
+      (m.block ? '<td data-tip="Building Block (' + esc(m.type) + ')" data-tip-anchor>Block</td>' : '<td>' + esc(m.type) + '</td>') +
       '<td class="r">' + num(m.accounts, 0) + '</td>' +
       '<td class="r">' + num(m.aum, 2) + '</td>' +
       '<td>' + esc(m.modifiedUser) + '</td>' +
@@ -941,7 +941,7 @@
     route();
     successCard(m, 'Model Approved', changeSummary(res.changes) + blocksNote(res.blocks), res.ts);
   }
-  function blocksNote(bl) { return bl && bl.length ? ' · Building Block ' + bl.map(function (b) { return b.access; }).join(', ') + ' auto-updated' : ''; }
+  function blocksNote(bl) { return bl && bl.length ? ' · Building Block' + (bl.length > 1 ? 's ' : ' ') + bl.map(function (b) { return b.access; }).join(', ') + ' auto-updated' : ''; }
   /* CONFIRM: once per visit to the model screen. */
   var confirmedHere = null;
   function confirmModel(m) {

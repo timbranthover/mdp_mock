@@ -261,7 +261,7 @@
    *  N612 Polen Global Growth: top 10 and region mix from Polen's 9/30/2026 fact sheet.
    *  N541 Capital Group U.S. Equity: top 5, ~3% cash and sector mix from its Morgan Stanley Select UMA profile (6/30/2026); tail illustrative.
    *  N533 Capital Group Global Equity: Capital Group global ADR SMA style; names illustrative.
-   *  N602 12th Street US Dividend Value and N622 Vanguard Core ETF Allocation - Mod: illustrative.
+   *  N602 12th Street US Dividend Value, N621/N622 Vanguard Core ETF Allocation, N534 Capital Group ETF Core Plus Cons Income: illustrative.
    */
   var CURATED = {
     N611: { cash: 0.98, rows: [['MSFT', 9.23], ['NVDA', 7.78], ['NOW', 6.44], ['GOOG', 6.13], ['AVGO', 6.01], ['AMZN', 5.88], ['V', 5.47], ['MA', 5.35], ['LLY', 4.76], ['ORCL', 4.53],
@@ -279,7 +279,9 @@
     N602: { cash: 2.4, rows: [['JPM', 5.2], ['JNJ', 4.6], ['XOM', 4.4], ['PG', 4.1], ['ABBV', 3.9], ['CVX', 3.6], ['HD', 3.5], ['MRK', 3.3], ['BRK/B', 3.3], ['UNH', 3.2], ['CSCO', 3.1], ['PEP', 3.0],
       ['KO', 3.0], ['WMT', 2.9], ['MCD', 2.8], ['TXN', 2.7], ['HON', 2.6], ['NEE', 2.6], ['GS', 2.5], ['LMT', 2.4], ['VZ', 2.3], ['RTX', 2.3], ['CAT', 2.2], ['PM', 2.2], ['SO', 2.1], ['UNP', 2.0],
       ['LIN', 1.9], ['MSFT', 1.9], ['AVGO', 1.8], ['TMO', 1.6]] },
-    N622: { cash: 1.5, rows: [['VTI', 36], ['VXUS', 22], ['BND', 26.5], ['BNDX', 11], ['VGIT', 3]] }
+    N622: { cash: 1.5, rows: [['VTI', 36], ['VXUS', 22], ['BND', 26.5], ['BNDX', 11], ['VGIT', 3]] },
+    N621: { cash: 2.0, rows: [['VTI', 24], ['VXUS', 14], ['BND', 40], ['BNDX', 17], ['VGIT', 3]] },
+    N534: { cash: 2.8, rows: [['CGCP', 37], ['CGSD', 20], ['CGMU', 14], ['CGDV', 12], ['CGUS', 9], ['CGIE', 5.2]] }
   };
   function buildHoldings(model) {
     var cur = CURATED[model.access];
@@ -489,18 +491,25 @@
     rows.unshift({ ticker: 'USD Cash', weight: +(allocTot - used).toFixed(3) });
     return { holdings: rows, contrib: contrib };
   }
+  // [access, name, type, accounts, AUM(M), sleeves [[access, alloc]], created, last block update, confirmed|null]
   var BLOCK_DEFS = [
     // growth + core + value: heavy, realistic overlap in mega-cap names
-    ['B101', 'UBS US Equity Building Block', 'Static', 214, 61.42, [['N611', 35], ['N541', 40], ['N602', 25]], '2026-10-01 09:12:44.210331', '2026-10-15 10:02:18.553201'],
+    ['B101', 'MyWay US Equity Building Block', 'Static', 214, 61.42, [['N611', 35], ['N541', 40], ['N602', 25]], '2026-10-01 09:12:44.210331', '2026-10-15 10:02:18.553201', '2026-10-15 10:30:00.118204'],
     // ~65% equity (US growth, US core, global, dividend+muni) / ~35% bonds via Vanguard and BlackRock sleeves
-    ['B102', 'UBS Global Multi-Asset Building Block', 'Static', 96, 28.75, [['N533', 25], ['N622', 25], ['N612', 20], ['N529', 15], ['N541', 15]], '2026-10-02 14:31:05.118842', '2026-10-09 11:46:30.774410']
+    ['B102', 'MyWay Global Multi-Asset Building Block', 'Static', 96, 28.75, [['N533', 25], ['N622', 25], ['N612', 20], ['N529', 15], ['N541', 15]], '2026-10-02 14:31:05.118842', '2026-10-09 11:46:30.774410', null],
+    // all-equity, global: two global stock pickers + a US core anchor
+    ['B103', 'MyWay Global Equity Building Block', 'Static', 158, 47.90, [['N533', 40], ['N612', 35], ['N541', 25]], '2026-10-05 10:44:12.903217', '2026-10-19 14:12:51.330942', '2026-10-20 09:05:00.441093'],
+    // ~70% bonds: core bond ETFs, short duration and munis, with a dividend-stock sleeve for income
+    ['B104', 'MyWay Conservative Income Building Block', 'Static', 302, 88.14, [['N621', 45], ['N534', 25], ['N602', 20], ['N529', 10]], '2026-10-06 15:20:33.671205', '2026-10-22 16:48:09.215538', '2026-10-23 11:40:00.902114'],
+    // growth tilt: concentrated US + global growth with a smaller core/global sleeve
+    ['B105', 'MyWay Growth Building Block', 'Static', 131, 52.66, [['N611', 40], ['N612', 30], ['N541', 20], ['N533', 10]], '2026-10-07 11:02:47.558120', '2026-10-21 15:26:40.127784', null]
   ];
   function buildBlocks(models) {
     var by = {}; models.forEach(function (m) { by[m.access] = m; });
     return BLOCK_DEFS.map(function (d) {
       var b = {
         manager: M.cio, name: d[1], access: d[0], swp: '', type: d[2], accounts: d[3], aum: d[4], kind: 'block', block: true,
-        status: 'Approved', modified: d[7], modifiedUser: MDP_USERS.admin, confirmed: null, confirmedUser: null,
+        status: 'Approved', modified: d[7], modifiedUser: MDP_USERS.admin, confirmed: d[8] || null, confirmedUser: d[8] ? MDP_USERS.admin : null,
         minimum: '$250,000', emails: '', tlh: '', pending: null, communications: [],
         sleeves: d[5].map(function (x) { return { access: x[0], alloc: x[1] }; }),
         users: [['MDC, ART', 'mdp.qa.user03@ubs.com', ''], ['CIO Portfolio Construction', 'cio.blocks.qa@ubs.com', '']]
@@ -513,9 +522,12 @@
       var created = b.sleeves.map(function (s) { return { ticker: s.access, from: 0, to: s.alloc }; });
       ev.push({ ts: d[6], event: 'Building Block Approved', user: MDP_USERS.admin, details: 'Initial allocation approved and published', changes: created, seq: seq++ });
       ev.push({ ts: d[7], event: 'Building Block Updated By Admin', user: MDP_USERS.admin, details: 'Allocation review', changes: created.slice(0, 2).map(function (c, i) { return { ticker: c.ticker, from: c.to + (i ? -2.5 : 2.5), to: c.to }; }), seq: seq++ });
+      ev.push({ ts: d[7], event: 'Building Block Approved', user: MDP_USERS.admin, details: 'Consolidated model recalculated and published', seq: seq++ });
+      if (d[8]) ev.push({ ts: d[8], event: 'Confirmed', user: MDP_USERS.admin, details: 'Building Block allocation confirmed', seq: seq++ });
       b.sleeves.forEach(function (s) {
         var m = by[s.access];
-        if (m && m.modified > d[6]) ev.push({ ts: m.modified, event: 'Underlying Model Updated', user: 'System', details: s.access + ' (' + m.name + ') updated by ' + m.modifiedUser + '. Consolidated model recalculated and auto-published.', seq: seq++ });
+        if (m && m.modified > d[6] && m.status === 'Needs Attention') ev.push({ ts: m.modified, event: 'Underlying Model Needs Attention', user: 'System', details: s.access + ' (' + m.name + ') set to Needs Attention by a mandatory corporate action. Building Block set to Needs Attention; it keeps using the last approved model.', seq: seq++ });
+        else if (m && m.modified > d[6]) ev.push({ ts: m.modified, event: 'Underlying Model Updated', user: 'System', details: s.access + ' (' + m.name + ') updated by ' + m.modifiedUser + '. Consolidated model recalculated and auto-published.', seq: seq++ });
       });
       ev.sort(function (a, b2) { return a.ts < b2.ts ? -1 : a.ts > b2.ts ? 1 : a.seq - b2.seq; });
       b.events = ev;
@@ -524,7 +536,7 @@
   }
 
   window.MDP_SEED = {
-    version: 6,
+    version: 7,
     managers: [M.bk, M.af, M.pl, M.cg, M.vg, M.t12, M.cio], // order used in the Model List header
     managerOptions: [M.t12, M.af, M.bk, M.cg, M.pl, M.vg, M.cio], // order used in the Manager filter
     blockManager: M.cio,

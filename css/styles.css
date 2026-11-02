@@ -666,7 +666,7 @@ tbody.g.open
 .bb-card-t { display: flex; justify-content: space-between; align-items: baseline; font-size: 12px; }
 .bb-card-t span { font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .bb-card-n { font-size: 11px; color: #333; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.bb-card-m { font-size: 10px; color: #777; }
+.bb-card-m { font-size: 10px; color: #777; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* summary tiles */
 .bb-tiles { display: grid; grid-template-columns: repeat(5, 1fr); border: 1px solid var(--line-2); background: #fff; margin-bottom: 14px; }
