@@ -354,7 +354,7 @@
   var M = {
     t12: '12th Street Asset Management', af: 'American Funds Models', bk: 'Blackrock Models',
     cg: 'Capital Group Models', pl: 'Polen Capital Management, LLC', vg: 'Vanguard Models',
-    bb: 'UBS CIO Building Blocks', mw: 'UBS CIO MyWay Portfolios', mm: 'UBS CIO Multi-Manager Portfolios'
+    bb: 'UBS CIO Building Blocks', mw: 'UBS CIO MyWay Portfolios', mm: 'UBS CIO Multi-Manager Portfolios', hv: 'UBS House View'
   };
   var DEFS = [
     [M.t12, '12th Street Tactical Multi-Asset - Bal', 'N601', '', 'Dynamic', 192, 84.16, 'multi', 'In Progress', '2026-10-27 12:19:17.500213', 'qa', '2026-10-08 14:09:00', 'qa'],
@@ -414,7 +414,8 @@
   var SHARED_USERS = [['Turner, Alla', 'mdp.qa.user01@ubs.com', ''], ['MDC, ART', 'mdp.qa.user03@ubs.com', ''], ['MDC, ART', 'testfailbounceback@example.com', ''], ['QASIT, ICSTOMMQA', 'mdp.qa.user03@ubs.com', ''], ['Test, ICSTOMMC', '', '']];
 
   PROFILE_USERS[M.bb] = [['CIO Portfolio Construction', 'cio.blocks.qa@ubs.com', '']];
-  var MINIMUMS = { 'ubsblock': '$25,000', 'multi': '$25,000', 'afunds': '$25,000', 'bktax': '$10,000', 'bkcore': '$10,000', 'ucits': '$50,000', 'capgroup': '$10,000', 'polen': '$100,000', 'vanguard': '$10,000' };
+  PROFILE_USERS[M.hv] = [['House View Model Team', 'hv.models.qa@ubs.com', '']];
+  var MINIMUMS = { 'houseview': '$50,000', 'ubsblock': '$25,000', 'multi': '$25,000', 'afunds': '$25,000', 'bktax': '$10,000', 'bkcore': '$10,000', 'ucits': '$50,000', 'capgroup': '$10,000', 'polen': '$100,000', 'vanguard': '$10,000' };
 
   /* ---------- snapshots & events ---------- */
   function jitter(rows, seed) {
@@ -465,6 +466,14 @@
         if (rand() < 0.4) push({ ts: stamp(day, rand), event: 'Error When Adding Security', user: testUsers[Math.floor(rand() * 2)], details: ERRORS[Math.floor(rand() * ERRORS.length)](rand, m) });
       });
     }
+    (EXTRA_HISTORY[m.access] || []).forEach(function (x) {
+      var ts = x[0] + ' ' + (m.access.charAt(0) === 'B' ? '10' : '11') + ':' + String(12 + hashStr(m.access + x[0]) % 40) + ':07.' + micros(hashStr('x' + m.access + x[0]));
+      var by = {}; m.holdings.forEach(function (h) { by[h.ticker] = h.weight; });
+      var chx = x[1].filter(function (c) { return by[c[0]] != null; }).map(function (c) { return { ticker: c[0], from: +(by[c[0]] - c[1]).toFixed(3), to: by[c[0]] }; });
+      if (!chx.length) return;
+      push({ ts: ts, event: 'Model Updated By Admin', user: MDP_USERS.admin, details: 'Admin reason for update: manager instruction', changes: chx });
+      push({ ts: ts, event: 'Model Approved', user: MDP_USERS.admin, details: '-', changes: chx });
+    });
     var ch = changesFor(m, rand);
     if (m.status === 'Approved') {
       push({ ts: m.modified, event: 'Model Updated By Admin', user: m.modifiedUser, details: 'Admin reason for update: ' + REASONS[Math.floor(rand() * REASONS.length)], changes: ch });
@@ -480,7 +489,110 @@
     return ev;
   }
 
+  /* ---------- UBS House View: 84 flat asset-allocation models (7 risk levels x 2 tax x 2 region x 3 styles) ----------
+   * Maintained by one team, usually all at once (quarterly), which is what Bulk Upload is for.
+   */
+  var HV_RISK = [['Fixed Income', 0], ['Conservative', 20], ['Moderately Conservative', 35], ['Moderate', 50], ['Moderately Aggressive', 65], ['Aggressive', 80], ['Equity', 100]];
+  var HV_STYLE = ['Core', 'Income', 'Real Assets'];
+  function hvHoldings(eqPct, taxable, global, style) {
+    var cash = 2, real = style === 'Real Assets' ? 6 : 0, inv = 100 - cash - real;
+    var eq = inv * eqPct / 100, fi = inv - eq, rows = [];
+    function add(t, w) { if (w > 0.0005) rows.push({ ticker: t, weight: +w.toFixed(3) }); }
+    var intl = global ? 0.40 : 0.22, us = 1 - intl;
+    if (style === 'Income') { add('VIG', eq * us * 0.55); add('IVV', eq * us * 0.45); }
+    else { add('IVV', eq * us * 0.72); add('IJH', eq * us * 0.16); add('IJR', eq * us * 0.12); }
+    add('IEFA', eq * intl * 0.72); add('IEMG', eq * intl * 0.28);
+    if (taxable) { add('MUB', fi * 0.62); add('VTEB', fi * 0.26); add('SHY', fi * 0.12); }
+    else if (style === 'Income') { add('LQD', fi * 0.34); add('IUSB', fi * 0.36); add('AGG', fi * 0.20); add('TIP', fi * 0.10); }
+    else { add('AGG', fi * 0.52); add('IUSB', fi * 0.20); add('TIP', fi * 0.14); add('SHY', fi * 0.14); }
+    if (real) { add('GLD', real * 0.6); add('TIP', 0); rows.push({ ticker: 'BIL', weight: +(real * 0.4).toFixed(3) }); }
+    var merged = {}; rows.forEach(function (r) { merged[r.ticker] = +((merged[r.ticker] || 0) + r.weight).toFixed(3); });
+    var out = Object.keys(merged).sort().map(function (t) { return { ticker: t, weight: merged[t] }; });
+    var used = out.reduce(function (a, r) { return a + r.weight; }, 0);
+    out.unshift({ ticker: 'USD Cash', weight: +(100 - used).toFixed(3) });
+    return out;
+  }
+  var HV_HOLD = {};
+  (function () {
+    var n = 0;
+    [1, 0].forEach(function (taxable) { [0, 1].forEach(function (global) { HV_STYLE.forEach(function (style) { HV_RISK.forEach(function (rk) {
+      n++;
+      var acc = 'H' + String(n).padStart(3, '0'), rand = mulberry32(hashStr('hv' + acc));
+      var name = 'HV ' + rk[0] + ' - ' + (taxable ? 'Taxable' : 'Non-Taxable') + ' ' + (global ? 'Global' : 'US') + ' ' + style;
+      var accounts = Math.round(40 + rand() * 900), aum = +(accounts * (0.18 + rand() * 0.3)).toFixed(2);
+      var day = 13 + Math.floor(rand() * 3), hh = 9 + Math.floor(rand() * 7);
+      var mod = '2026-10-' + day + ' ' + String(hh).padStart(2, '0') + ':' + String(Math.floor(rand() * 60)).padStart(2, '0') + ':' + String(Math.floor(rand() * 60)).padStart(2, '0') + '.' + micros(hashStr(acc));
+      DEFS.push([M.hv, name, acc, '', 'Static', accounts, aum, 'houseview', 'Approved', mod, 'admin', rand() < 0.7 ? '2026-10-16 10:' + String(10 + Math.floor(rand() * 45)) + ':00' : null, 'admin']);
+      HV_HOLD[acc] = hvHoldings(rk[1], !!taxable, !!global, style);
+    }); }); }); });
+  })();
+
+  /* ---------- attributes used by the downstream views ---------- */
+  var TAX_MANAGED = { B303: 1, B308: 1, N529: 1, N527: 1, N526: 1, N528: 1, N536: 1, N624: 1 };
+  /* Manager fee in basis points (illustrative mock rates). UBS-managed models carry no third-party manager fee. */
+  var FEE_BPS = { polen: 34, capgroup: 8, multi: 28, bktax: 12, bkcore: 10, vanguard: 6, afunds: 0, ucits: 14, ubsblock: 0, houseview: 0, portfolio: 0 };
+  var FEE_OVERRIDE = { N533: 30, N541: 30, N602: 29, N612: 36, N613: 42 };
+  /* Extra, deliberate history so cross-sleeve checks have something real to find:
+   * one sleeve reduces a security that another sleeve of the same portfolio adds within 30 days. [day, [[ticker, delta]]] */
+  var EXTRA_HISTORY = {
+    B301: [['2026-10-22', [['ORCL', -0.6], ['NOW', 0.6]]]],
+    B303: [['2026-10-20', [['ORCL', 0.3], ['CSCO', -0.3]]]],
+    B304: [['2026-10-23', [['MSFT', 0.4], ['VZ', -0.4]]]],
+    N612: [['2026-10-14', [['META', -0.5], ['SAP', 0.5]]]],
+    N611: [['2026-10-19', [['META', 0.45], ['SBUX', -0.45]]]],
+    N541: [['2026-10-15', [['ORCL', -0.4], ['MU', 0.4]]]]
+  };
+  /* Advisor guardrails for MyWay portfolios: default band around the target, and approved swaps between like-for-like blocks. */
+  var SWAPS = { B302: ['B304'], B304: ['B302'], B307: ['B308'], B308: ['B307'], B306: ['B305'] };
+  function defaultBand(t) { var b = t >= 30 ? 5 : t >= 15 ? 4 : 3; return { min: Math.max(0, t - b), max: Math.min(100, t + b) }; }
+
+  /* ---------- keep the mock calendar current ----------
+   * Seed dates are written around late Oct / early Nov 2026. They are moved forward by a whole number of BUSINESS
+   * days so that the newest seeded activity (2026-11-02) always lands on the latest business day, and everything
+   * else keeps its distance from it in business days. The twin therefore looks the same on any day it is opened.
+   */
+  var BIZ_BASE = Date.UTC(2025, 11, 29); // a Monday
+  function bizIndex(iso) { // business days since BIZ_BASE; weekend dates count as the Friday before
+    var n = Math.round((Date.UTC(+iso.slice(0, 4), +iso.slice(5, 7) - 1, +iso.slice(8, 10)) - BIZ_BASE) / 864e5), dow = ((n % 7) + 7) % 7;
+    return Math.floor(n / 7) * 5 + Math.min(dow, 4);
+  }
+  function bizDate(idx) { var d = new Date(BIZ_BASE + (Math.floor(idx / 5) * 7 + ((idx % 5) + 5) % 5) * 864e5); return d.getUTCFullYear() + '-' + String(d.getUTCMonth() + 1).padStart(2, '0') + '-' + String(d.getUTCDate()).padStart(2, '0'); }
+  function shiftDays() { // in business days
+    var p = {}; new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', hour12: false }).formatToParts(new Date()).forEach(function (x) { p[x.type] = x.value; });
+    var iso = p.year + '-' + p.month + '-' + p.day, dow = new Date(Date.UTC(+p.year, +p.month - 1, +p.day)).getUTCDay();
+    var idx = bizIndex(iso);
+    if (dow !== 0 && dow !== 6 && (+p.hour % 24) < 10) idx -= 1; // before 10 AM, the latest full business day is yesterday
+    return Math.max(0, idx - bizIndex('2026-11-02'));
+  }
+  function shiftIso(iso, days) { return days ? bizDate(bizIndex(iso) + days) : iso; }
+  function shiftStamp(s, days) { return s && days ? shiftIso(s.slice(0, 10), days) + s.slice(10) : s; }
+  function shiftText(t, days) {
+    return t && days ? t.replace(/(\d{2})\/(\d{2})\/(\d{4})/g, function (_, mo, d, y) { var iso = shiftIso(y + '-' + mo + '-' + d, days); return iso.slice(5, 7) + '/' + iso.slice(8, 10) + '/' + iso.slice(0, 4); }) : t;
+  }
+  function shiftModel(m, days) {
+    if (!days) return;
+    m.modified = shiftStamp(m.modified, days); m.confirmed = shiftStamp(m.confirmed, days);
+    m.events.forEach(function (e) { e.ts = shiftStamp(e.ts, days); if (e.note) e.note = shiftText(e.note, days); });
+    var sn = {}; Object.keys(m.snapshots).forEach(function (k) { sn[shiftIso(k, days)] = m.snapshots[k]; }); m.snapshots = sn;
+  }
+  /* A Dynamic model that updates through the trading day: its latest approval is the most recent half-hour mark
+   * (at least 10 minutes ago, 9:30-15:30 ET, business days), so there is normally a delivery in flight during market
+   * hours and the same answer on every reload. */
+  var LIVE_ACCESS = 'N622';
+  function liveStamp() {
+    var p = {}; new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(new Date()).forEach(function (x) { p[x.type] = x.value; });
+    var iso = p.year + '-' + p.month + '-' + p.day, mins = (+p.hour % 24) * 60 + +p.minute;
+    var dow = new Date(Date.UTC(+p.year, +p.month - 1, +p.day)).getUTCDay();
+    var slot = Math.min(930, Math.floor((mins - 10) / 30) * 30);
+    if (dow === 0 || dow === 6 || slot < 570) { // weekend or before the first slot: last slot of the previous business day
+      iso = bizDate(bizIndex(iso) - (dow === 0 || dow === 6 ? 0 : 1));
+      slot = 930;
+    }
+    return iso + ' ' + String(Math.floor(slot / 60)).padStart(2, '0') + ':' + String(slot % 60).padStart(2, '0') + ':04.418207';
+  }
+
   function buildModels() {
+    var days = shiftDays();
     var models = DEFS.map(function (d) {
       var m = {
         manager: d[0], name: d[1], access: d[2], swp: d[3], type: d[4], accounts: d[5], aum: d[6], kind: d[7],
@@ -488,8 +600,10 @@
         minimum: MINIMUMS[d[7]], emails: '', tlh: '', pending: null, communications: []
       };
       if (m.confirmed && m.confirmed.indexOf('.') < 0) m.confirmed += '.' + micros(hashStr('c' + m.access));
-      m.holdings = buildHoldings(m);
-      m.users = (PROFILE_USERS[m.manager] || []).concat(SHARED_USERS);
+      m.holdings = HV_HOLD[m.access] ? HV_HOLD[m.access].map(function (h) { return { ticker: h.ticker, weight: h.weight }; }) : buildHoldings(m);
+      m.users = (PROFILE_USERS[m.manager] || []).concat(m.kind === 'houseview' ? [] : SHARED_USERS);
+      if (TAX_MANAGED[m.access]) m.taxManaged = true;
+      m.feeBps = FEE_OVERRIDE[m.access] != null ? FEE_OVERRIDE[m.access] : (FEE_BPS[m.kind] || 0);
       // snapshots
       m.snapshots = {};
       var rand = mulberry32(hashStr('snap' + m.access));
@@ -500,9 +614,17 @@
         if (dt === '2026-10-21' || dt === dayOf(m.confirmed || '') || rand() > 0.35) m.snapshots[dt] = jitter(m.holdings, hashStr(m.access + dt) + i);
       });
       m.events = buildEvents(m);
+      shiftModel(m, days);
+      if (m.access === LIVE_ACCESS) {
+        var ts = liveStamp(), h1 = m.holdings[1], h2 = m.holdings[2];
+        var ch = [{ ticker: h1.ticker, from: +(h1.weight + 0.5).toFixed(3), to: h1.weight }, { ticker: h2.ticker, from: +(h2.weight - 0.5).toFixed(3), to: h2.weight }];
+        m.modified = ts; m.modifiedUser = MDP_USERS.qa;
+        m.events.push({ ts: ts, event: 'Model Updated By Admin', user: MDP_USERS.qa, details: 'Admin reason for update: drift correction', changes: ch, seq: 900 });
+        m.events.push({ ts: ts, event: 'Model Approved', user: MDP_USERS.qa, details: '-', changes: ch, seq: 901 });
+      }
       return m;
     });
-    return models.concat(buildPortfolios(models));
+    return models.concat(buildPortfolios(models, days));
   }
 
   /* ---------- Portfolios (parent models made of other models) ----------
@@ -547,9 +669,10 @@
     ['M104', 'mm', 'Multi-Manager Conservative Income Portfolio', 302, 88.14, [['N621', 45], ['N534', 25], ['N602', 20], ['N529', 10]], '2026-10-06 15:20:33.671205', '2026-10-22 16:48:09.215538', '2026-10-23 11:40:00.902114'],
     ['M105', 'mm', 'Multi-Manager Growth Portfolio', 131, 52.66, [['N611', 40], ['N612', 30], ['N541', 20], ['N533', 10]], '2026-10-07 11:02:47.558120', '2026-10-21 15:26:40.127784', null]
   ];
-  function buildPortfolios(models) {
+  function buildPortfolios(models, days) {
     var by = {}; models.forEach(function (m) { by[m.access] = m; });
     var parents = PORTFOLIO_DEFS.map(function (d) {
+      d = d.slice(); d[6] = shiftStamp(d[6], days); d[7] = shiftStamp(d[7], days); d[8] = shiftStamp(d[8], days);
       var fam = FAMILY[d[1]];
       var p = {
         manager: fam.manager, name: d[2], access: d[0], swp: '', type: 'Static', accounts: d[3], aum: d[4], kind: 'portfolio', parent: true, family: d[1], profile: d[9] || null,
@@ -559,8 +682,18 @@
         users: [['MDC, ART', 'mdp.qa.user03@ubs.com', ''], ['CIO Portfolio Construction', 'cio.blocks.qa@ubs.com', '']]
       };
       p.holdings = consolidate(p.sleeves, by).holdings;
+      if (d[1] === 'myway') {
+        // advisor guardrails (min / max per block, approved swaps) and the launch values advisors customised against
+        p.guard = {}; p.swaps = {}; p.base = {};
+        p.sleeves.forEach(function (s) {
+          var b = defaultBand(s.alloc);
+          p.guard[s.access] = { min: b.min, max: b.max }; p.base[s.access] = { t: s.alloc, min: b.min, max: b.max };
+          var sw = (SWAPS[s.access] || []).filter(function (x) { return !p.sleeves.some(function (y) { return y.access === x; }); });
+          if (sw.length) p.swaps[s.access] = sw;
+        });
+      }
       p.snapshots = {};
-      ['2026-10-21', '2026-10-14'].forEach(function (dt, i) { p.snapshots[dt] = jitter(p.holdings, hashStr(p.access + dt) + i); });
+      ['2026-10-21', '2026-10-14'].forEach(function (dt, i) { p.snapshots[shiftIso(dt, days)] = jitter(p.holdings, hashStr(p.access + dt) + i); });
       var ev = [], seq = 0;
       ev.push({ ts: d[6], event: 'Portfolio Created', user: MDP_USERS.admin, details: fam.label + ' created with ' + p.sleeves.length + ' ' + (d[1] === 'myway' ? 'building blocks' : 'underlying strategies'), seq: seq++ });
       var created = p.sleeves.map(function (s) { return { ticker: s.access, from: 0, to: s.alloc }; });
@@ -590,10 +723,14 @@
   }
 
   window.MDP_SEED = {
-    version: 8,
-    managers: [M.bk, M.af, M.pl, M.cg, M.vg, M.t12, M.bb, M.mw, M.mm], // order used in the Model List header
-    managerOptions: [M.t12, M.af, M.bk, M.cg, M.pl, M.vg, M.bb, M.mw, M.mm], // order used in the Manager filter
-    ubsManagers: [M.bb, M.mw, M.mm],
+    version: 9,
+    managers: [M.bk, M.af, M.pl, M.cg, M.vg, M.t12, M.bb, M.mw, M.mm, M.hv], // order used in the Model List header
+    managerOptions: [M.t12, M.af, M.bk, M.cg, M.pl, M.vg, M.bb, M.mw, M.mm, M.hv], // order used in the Manager filter
+    ubsManagers: [M.bb, M.mw, M.mm, M.hv],
+    houseViewManager: M.hv,
+    overlayBps: 4, // model-delivery overlay fee, illustrative
+    defaultBand: defaultBand,
+    hash: hashStr, rng: mulberry32,
     blockManager: M.bb,
     families: FAMILY,
     consolidate: consolidate,
@@ -610,7 +747,8 @@
       capitalgroup: { user: 'Prescott, Elena', managers: [M.cg] },
       polen: { user: 'Kessler, Anya', managers: [M.pl] },
       vanguard: { user: 'Whitfield, Cole', managers: [M.vg] },
-      twelfthstreet: { user: 'Hollis, Grant', managers: [M.t12] }
+      twelfthstreet: { user: 'Hollis, Grant', managers: [M.t12] },
+      houseview: { user: 'Lindqvist, Maja', managers: [M.hv] }
     }
   };
 })();

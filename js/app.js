@@ -92,6 +92,8 @@
     newI: '<svg viewBox="0 0 14 14"><circle cx="7" cy="7" r="6.5" fill="#1d6e8f"/><path d="M7 3.8v6.4M3.8 7h6.4" stroke="#fff" stroke-width="1.6"/></svg>',
     errBang: '<svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="7.5" fill="#c8102e"/><path d="M8 3.8v5.2" stroke="#fff" stroke-width="1.9"/><circle cx="8" cy="11.7" r="1.1" fill="#fff"/></svg>',
     refresh: '<svg viewBox="0 0 16 16"><path d="M13 8a5 5 0 1 1-1.5-3.6M13 2.5v2.5h-2.5" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>',
+    play: '<svg viewBox="0 0 12 12"><path d="M3 1.8v8.4L10 6z" fill="currentColor"/></svg>',
+    upload: '<svg viewBox="0 0 20 20"><path d="M10 13V3.5M6 7.2l4-4 4 4M3.5 13.5v3h13v-3" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>',
     excel: '<svg viewBox="0 0 16 16"><rect x="1.5" y="2.5" width="13" height="11" rx="1" fill="#1f7244"/><path d="M5 5.5l3 5M8 5.5l-3 5" stroke="#fff" stroke-width="1.3"/><path d="M9.5 5.5h3.5M9.5 8h3.5M9.5 10.5h3.5" stroke="#fff" stroke-width=".9"/></svg>'
   };
   var STATUS_ICON = { 'Approved': I.ok, 'In Progress': I.warn, 'Rejected': I.err, 'Needs Attention': I.attn, 'New': I.newI };
@@ -100,24 +102,28 @@
   /* ================= state & persistence ================= */
   var params = new URLSearchParams(location.search);
   var UX_CURRENT = params.get('ux') === 'current'; // reproduce production behavior where we propose improvements
+  /* Persistence stores only the models that differ from the seed (edited, approved, confirmed, in draft...).
+     Unchanged models are rebuilt from the seed on load, so storage stays small however many models exist. */
+  function sigOf(m) {
+    return [m.status, m.modified, m.confirmed || '', m.events.length, m.draft && m.draft.live ? 1 : 0, m.bdraft ? 1 : 0, m.tlh || '', m.rev || 0].join('|');
+  }
+  var seedSig = {};
   function loadModels() {
     if (params.get('reset')) { try { localStorage.removeItem(STORE_KEY); } catch (e) { /* ignore */ } }
-    try {
-      var raw = localStorage.getItem(STORE_KEY);
-      if (raw) { var parsed = JSON.parse(raw); if (Array.isArray(parsed) && parsed.length) return parsed; }
-    } catch (e) { /* ignore */ }
-    return SEED.buildModels();
+    var models = SEED.buildModels(), saved = null;
+    models.forEach(function (m) { seedSig[m.access] = sigOf(m); });
+    try { var raw = localStorage.getItem(STORE_KEY); if (raw) saved = JSON.parse(raw); } catch (e) { saved = null; }
+    if (saved && saved.models) models = models.map(function (m) { return saved.models[m.access] || m; });
+    return models;
+  }
+  function persist() {
+    var out = {};
+    S.models.forEach(function (m) { if (sigOf(m) !== seedSig[m.access]) out[m.access] = m; });
+    try { localStorage.setItem(STORE_KEY, JSON.stringify({ v: SEED.version, models: out })); } catch (e) { /* ignore */ }
   }
   var saveTimer = null;
-  function save() {
-    clearTimeout(saveTimer);
-    saveTimer = setTimeout(function () {
-      try { localStorage.setItem(STORE_KEY, JSON.stringify(S.models)); } catch (e) { /* ignore */ }
-    }, 150);
-  }
-  window.addEventListener('beforeunload', function () {
-    if (saveTimer) { clearTimeout(saveTimer); try { localStorage.setItem(STORE_KEY, JSON.stringify(S.models)); } catch (e) { /* ignore */ } }
-  });
+  function save() { clearTimeout(saveTimer); saveTimer = setTimeout(function () { saveTimer = null; persist(); }, 150); }
+  window.addEventListener('beforeunload', function () { if (saveTimer) { clearTimeout(saveTimer); persist(); } });
 
   var persona = SEED.personas[(params.get('persona') || 'admin').toLowerCase()] || SEED.personas.admin;
   function emptyFilters() { return { managers: [], mod: null, conf: null, status: [] }; }
@@ -353,13 +359,14 @@
   function renderList() {
     var L = S.list;
     app.innerHTML =
-      '<div class="banner"><h1>Model Delivery Portal</h1>' + improvementsBtn() + '<button class="btn-support">Support</button></div>' +
+      '<div class="banner"><h1>Model Delivery Portal</h1>' + bannerTools() + '</div>' +
       '<div class="page">' +
         '<section class="card ml-head">' +
           '<div class="ml-title">Model List</div>' +
           '<div class="kv mgr"><span class="k">Manager</span><span class="v">' + esc(visibleManagers().join(', ')) + '</span></div>' +
           '<div class="kv user"><span class="k">User</span><span class="v">' + esc(persona.user) + '</span></div>' +
           '<div class="ml-tools"><label class="search-box">' + I.search + '<input id="ml-search" placeholder="Search" value="' + esc(L.search) + '" autocomplete="off"></label>' +
+            '<a class="tool-link bulk-link" href="#/bulk" data-tip="Update many models from one workbook" data-tip-anchor>' + I.upload + 'Bulk Upload</a>' +
             '<button class="icon-btn" data-act="list-export" data-tip="Download" data-tip-anchor>' + I.download + '</button>' +
             '<button class="icon-btn" data-act="print" data-tip="Print" data-tip-anchor>' + I.print + '</button></div>' +
         '</section>' +
@@ -578,7 +585,7 @@
    * ===================================================================== */
   var TABS = [['info', 'Model Information', 'details'], ['communication', 'Communication', 'today'], ['analysis', 'Analysis', 'performance']];
   var SUBS = {
-    info: [['details', 'Model Details'], ['options', 'Model Options'], ['snapshot', 'Model Snapshot']],
+    info: [['details', 'Model Details'], ['options', 'Model Options'], ['snapshot', 'Model Snapshot'], ['delivery', 'Delivery']],
     communication: [['today', "Today's Change"], ['sma', 'SMA Communication']],
     analysis: [['performance', 'Performance'], ['profile', 'Profile']]
   };
@@ -606,11 +613,11 @@
       return;
     }
     if (!SUBS[tab]) tab = 'info';
-    var subs = m.parent && tab === 'info' ? B.SUBS : SUBS[tab];
+    var subs = m.parent && tab === 'info' ? B.subsFor(m) : SUBS[tab];
     if (!subs.some(function (s) { return s[0] === sub; })) sub = subs[0][0];
     var base = '#/model/' + encodeURIComponent(access) + '/';
     app.innerHTML =
-      '<div class="banner detail"><a class="crumb" href="#/">' + I.left + 'Model List</a><h1>Model Delivery Portal</h1>' + improvementsBtn() + '<button class="btn-support">Support</button></div>' +
+      '<div class="banner detail"><a class="crumb" href="#/">' + I.left + 'Model List</a><h1>Model Delivery Portal</h1>' + bannerTools() + '</div>' +
       '<div class="page">' +
         '<section class="card d-head">' +
           '<div class="tabs big">' + TABS.map(function (t) { return '<a href="' + base + t[0] + '/' + t[2] + '" class="' + (t[0] === tab ? 'on' : '') + '">' + t[1] + '</a>'; }).join('') + '</div>' +
@@ -623,6 +630,7 @@
         '</section>' +
       '</div>';
     if (m.parent && (sub === 'details' || sub === 'holdings')) { (sub === 'details' ? B.renderComposition : B.renderHoldings)(m, $('#d-content')); return; }
+    if (U.tabs[sub]) { U.tabs[sub](m, $('#d-content')); return; }
     ({ details: renderModelDetails, options: renderOptions, snapshot: renderSnapshot, today: renderToday, sma: renderSma, performance: renderPerformance, profile: renderProfile })[sub](m, $('#d-content'));
   }
 
@@ -692,6 +700,7 @@
       '</div>' +
       '<div class="grid-scroll md-scroll"><table class="grid md-grid" id="md-table"></table></div>' +
       '<div id="md-foot" class="md-foot"></div>' +
+      '<div id="impact" class="impact-slot"></div>' +
       '<div class="md-buttons"><button class="btn btn-text" data-act="md-clear" data-acc="' + esc(m.access) + '">Clear</button><button class="btn btn-tan" id="md-submit" data-act="md-submit" data-acc="' + esc(m.access) + '">Submit</button><button class="btn btn-black" id="md-confirm" data-act="md-confirm" data-acc="' + esc(m.access) + '">Confirm</button></div>';
     renderMdTable(m);
     bindMdTable(m);
@@ -796,6 +805,7 @@
     var tEl = $('#md-table'); if (tEl) tEl.setAttribute('data-n', nChg);
     setBtn($('#md-submit'), subWhy);
     setBtn($('#md-confirm'), confWhy);
+    U.paintImpact(m, df.dirty ? df.changes : null);
   }
   function setBtn(b, why) {
     if (!b) return;
@@ -946,8 +956,9 @@
   function doSubmit(m) {
     var res = applySubmit(m);
     route();
-    successCard(m, 'Model Approved', changeSummary(res.changes) + blocksNote(res.blocks), res.ts);
+    successCard(m, 'Model Approved', changeSummary(res.changes) + blocksNote(res.blocks), res.ts, trackHref(m));
   }
+  function trackHref(m) { return '#/model/' + encodeURIComponent(m.access) + '/info/delivery'; }
   function blocksNote(bl) { return !bl || !bl.length ? '' : bl.length > 2 ? ' · ' + bl.length + ' portfolios auto-updated' : ' · Portfolio' + (bl.length > 1 ? 's ' : ' ') + bl.map(function (b) { return b.access; }).join(', ') + ' auto-updated'; }
   /* CONFIRM: once per visit to the model screen. */
   var confirmedHere = null;
@@ -967,13 +978,13 @@
   }
   /* Success card: clear, unobtrusive, dismisses itself (pauses while hovered). */
   var cardTimer = null;
-  function successCard(m, title, detail, ts) {
+  function successCard(m, title, detail, ts, track) {
     var root = $('#success-root');
     clearTimeout(cardTimer);
     root.innerHTML = '<div class="okcard" role="status" aria-live="polite"><div class="okc-ic">' + I.ok + '</div><div class="okc-b">' +
       '<div class="okc-t">' + esc(title) + '</div><div class="okc-n">' + esc(m.name) + ' <span>' + esc(m.access) + '</span></div>' +
       '<div class="okc-d">' + esc(detail) + ' &middot; ' + fmt.conf(ts).split(' ').slice(1).join(' ') + '</div>' +
-      '<div class="okc-a">' + (m.access ? '<button data-act="audit" data-acc="' + esc(m.access) + '">View Audit Trail</button>' : '') + '<button data-act="card-close">Dismiss</button></div></div>' +
+      '<div class="okc-a">' + (track ? '<a href="' + esc(track) + '" data-act="card-close">Track Delivery</a>' : '') + (m.access ? '<button data-act="audit" data-acc="' + esc(m.access) + '">View Audit Trail</button>' : '') + '<button data-act="card-close">Dismiss</button></div></div>' +
       '<button class="x" data-act="card-close" aria-label="Dismiss">&times;</button><i class="okc-bar"></i></div>';
     var card = root.firstChild, left = 5000, started = Date.now();
     function arm() { started = Date.now(); card.querySelector('.okc-bar').style.animationPlayState = 'running'; cardTimer = setTimeout(closeCard, left); }
@@ -1162,6 +1173,13 @@
    * IMPROVEMENTS LOG — net new vs production (data in js/improvements.js)
    * ===================================================================== */
   var IMPS = window.MDP_IMPROVEMENTS || [], impState = { area: 'All', q: '' };
+  /* Right side of the banner on every screen: walkthrough, delivery dashboard, improvements log, support */
+  function bannerTools(here) {
+    return '<span class="banner-tools">' +
+      '<button class="btn-tour" data-act="tour-start" data-tip="Step-by-step walkthrough of what is new in this twin" data-tip-anchor>' + I.play + 'Walkthrough</button>' +
+      (here === 'delivery' ? '' : '<a class="btn-imps" href="#/delivery" data-tip="Every model change, from approval to trades completed" data-tip-anchor>Delivery</a>') +
+      (here === 'improvements' ? '' : improvementsBtn()) + '<button class="btn-support">Support</button></span>';
+  }
   function improvementsBtn() { return IMPS.length ? '<a class="btn-imps" href="#/improvements" data-tip="Everything in this twin that is new vs. production" data-tip-anchor>Improvements <b>' + IMPS.length + '</b></a>' : ''; }
   function impFiltered() {
     var q = impState.q.trim().toLowerCase();
@@ -1175,7 +1193,7 @@
     IMPS.forEach(function (x) { if (areas.indexOf(x.area) < 0) areas.push(x.area); });
     var latest = IMPS.reduce(function (a, x) { return x.added > a ? x.added : a; }, '');
     app.innerHTML =
-      '<div class="banner detail"><a class="crumb" href="#/">' + I.left + 'Model List</a><h1>Model Delivery Portal</h1><button class="btn-support">Support</button></div>' +
+      '<div class="banner detail"><a class="crumb" href="#/">' + I.left + 'Model List</a><h1>Model Delivery Portal</h1>' + bannerTools('improvements') + '</div>' +
       '<div class="page">' +
         '<section class="card ml-head">' +
           '<div class="ml-title">Improvements</div>' +
@@ -1311,6 +1329,7 @@
       case 'md-confirm': confirmModel(m); break;
       case 'submit-anyway': closeModal(); doSubmit(m); break;
       case 'card-close': closeCard(); break;
+      case 'tour-start': if (window.MDPTour) window.MDPTour.start(); break;
       case 'open-model': location.hash = '#/model/' + encodeURIComponent(el.getAttribute('data-to')) + '/info/details'; break;
       case 'tlh-submit': {
         var inp = $('#tlh'), val = inp.value.trim().toUpperCase();
@@ -1366,7 +1385,10 @@
     S.models.forEach(function (m) { if (m.draft && !m.draft.live) delete m.draft; });
     var hq = location.hash.split('?'), wantImport = hq[1] === 'import';
     var h = hq[0].replace(/^#\/?/, '').split('/');
-    if (h[0] === 'improvements') { current.access = null; confirmedHere = null; renderImprovements(); document.title = 'Model Delivery Portal - Improvements'; return; }
+    U.stopLive();
+    if (h[0] === 'improvements') { current.access = null; confirmedHere = null; renderImprovements(); document.title = 'Model Delivery Portal - Improvements'; afterRoute(); return; }
+    if (h[0] === 'delivery') { current.access = null; confirmedHere = null; B.refreshStatuses(); U.renderDashboard(app); document.title = 'Model Delivery Portal - Delivery'; afterRoute(); return; }
+    if (h[0] === 'bulk') { current.access = null; confirmedHere = null; window.MDPBulk.render(app); document.title = 'Model Delivery Portal - Bulk Upload'; afterRoute(); return; }
     if (h[0] !== 'model' || decodeURIComponent(h[1] || '') !== confirmedHere) confirmedHere = null;
     if (h[0] !== 'model' || decodeURIComponent(h[1] || '') !== S.onlyChanged) S.onlyChanged = null;
     B.leave(h[0] === 'model' ? decodeURIComponent(h[1] || '') : null);
@@ -1380,19 +1402,27 @@
     }
     document.title = current.access ? 'Model Delivery Portal - ' + current.access : 'Model Delivery Portal - Money Manager';
     if (wantImport && current.access) setTimeout(function () { if (window.MDPImport && $('#md-table')) window.MDPImport.open(current.access); }, 0);
+    afterRoute();
   }
+  function afterRoute() { if (window.MDPTour) window.MDPTour.onRoute(); }
   window.addEventListener('hashchange', function () {
     if (skipRoute) { skipRoute = false; return; }
     route(); window.scrollTo(0, 0);
   });
   /* Portfolios: MyWay + Multi-Manager (js/portfolios.js) */
-  var B = window.MDPPortfoliosInit({
+  var CTX = {
     S: S, SEED: SEED, SEC: SEC, CASH: CASH, EPS: EPS, I: I, esc: esc, num: num, round3: round3, fmt: fmt, byAccess: byAccess,
-    persona: persona, isAdmin: isAdmin, displayName: displayName, todayISO: todayISO, nowStamp: nowStamp, eventsDesc: eventsDesc,
-    statusHtml: statusHtml, setBtn: setBtn, toast: toast, modal: modal, closeModal: closeModal, successCard: successCard,
+    persona: persona, isAdmin: isAdmin, displayName: displayName, todayISO: todayISO, nowStamp: nowStamp, nyParts: nyParts, parseStamp: parseStamp, eventsDesc: eventsDesc,
+    statusHtml: statusHtml, setBtn: setBtn, toast: toast, modal: modal, closeModal: closeModal, successCard: successCard, trackHref: trackHref,
     logEvent: logEvent, save: save, route: function () { route(); }, currentModel: function () { return currentModel(); },
+    scopedModels: scopedModels, findModel: findModel, bannerTools: bannerTools, typeTag: function (m) { return typeTag(m); }, secFor: secFor,
     refreshMeta: function (m) { var a = $('#d-meta'); if (a) a.innerHTML = metaHtml(m); var w = $('#d-why'); if (w) w.innerHTML = whyHtml(m); }
-  });
+  };
+  var B = window.MDPPortfoliosInit(CTX);
+  CTX.B = B;
+  /* Downstream views: delivery, impact, accounts, guardrails, cross-sleeve checks, fees (js/uma.js) */
+  var U = window.MDPUmaInit(CTX);
+  CTX.U = U;
   /* Internal API for js/import.js */
   window.MDPCore = {
     SEC: SEC, SEED: SEED, CASH: CASH, EPS: EPS, I: I, esc: esc, num: num, round3: round3, fmt: fmt, todayISO: todayISO, EOD: EOD,
@@ -1401,7 +1431,10 @@
     getDraft: getDraft, rowOf: rowOf, newRow: newRow, touch: touch, discardDraft: discardDraft, syncCash: syncCash,
     renderMdTable: renderMdTable, updateTotals: updateTotals, checkSecurity: checkSecurity, resolveSecurity: resolveSecurity,
     applySubmit: applySubmit, changeSummary: changeSummary, blocksNote: blocksNote, successCard: successCard, logEvent: logEvent, nowStamp: nowStamp,
-    parseCsv: parseCsv, save: save, route: route, onDetails: function () { return !!document.getElementById('md-table'); }
+    parseCsv: parseCsv, save: save, route: route, onDetails: function () { return !!document.getElementById('md-table'); },
+    bannerTools: bannerTools, modal: modal, closeModal: closeModal, setBtn: setBtn, byAccess: byAccess, B: B, U: U, statusHtml: statusHtml,
+    typeTag: function (m) { return typeTag(m); }, diff: diff, submitModel: submitModel, doSubmit: doSubmit
   };
-  route();
+  /* First render waits for the scripts loaded after this one (import, bulk upload, walkthrough). */
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', route); else route();
 })();

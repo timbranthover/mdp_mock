@@ -26,9 +26,10 @@ Plain HTML/CSS/JS — no build step. Deploy the repo root as a static site on Ve
   - **CONFIRM** is available only when there are no changes, and only once per visit to the screen. It stamps Confirmed user/date.
   - **DELETE** removes a row and moves its weight to USD Cash (current production behavior).
   - **CLEAR** discards edits and releases the lock.
-- **Model Snapshot**: date picker; shows "Model snapshot not saved for selected date" when none exists (every model has 10/21/2026 seeded).
+- **Model Snapshot**: date picker; shows "Model snapshot not saved for selected date" when none exists.
 - **Model Options**: Tax Loss Harvest Replacement saves and is logged.
-- Edits persist in the browser (localStorage).
+- Edits persist in the browser (localStorage). Only models that differ from the seed are stored.
+- Seed dates move forward in whole weeks so the newest activity is always within the last few days.
 
 ## Improvements log
 
@@ -62,6 +63,28 @@ Portfolios share the same screens:
 - **Status flows up**: an underlying model that is Rejected or Needs Attention puts the portfolio in Needs Attention, with a link to it.
 - Every underlying model shows where it is used (UBS view only; try `?persona=polen`, where nothing changes).
 
+## After Submit (proposed): impact, delivery, accounts, guardrails, fees
+
+MDP today ends at *Model Approved*. These views (`js/uma.js`) show the rest of the chain. Nothing here keeps its own records: deliveries are derived from the audit trail and accounts are generated deterministically, so every view stays consistent with the models.
+
+- **Impact before approval**: a strip under the Model Details grid and the Composition grid shows securities changing, turnover, accounts, portfolios recalculated, when trading starts, and cross-sleeve conflicts.
+- **Delivery tab** (every model): each approval is a delivery followed through *Approved in MDP → Sent to Vestmark → Trading → Trades complete → Reconciled*, with accounts traded and exceptions. Approvals after 3:45 PM ET or on weekends queue for the next open.
+- **Delivery dashboard** (`#/delivery`): all deliveries, in flight, open exceptions, and models needing action.
+- **Guardrails** (MyWay): min / max per block, approved swaps, and the published feed for the proposal tool. A target cannot be approved outside its range.
+- **Accounts** (portfolios): every account by sleeve; open one for the full look-through.
+- **Cross-sleeve check**: one sleeve reduced a security another added within 30 days.
+- **Fees** (portfolios): billable assets per sleeve, blended fee, per-manager billing feed. Rates are illustrative.
+
+Trade and account data would come from Vestmark; here it is mock.
+
+## Bulk Upload (proposed)
+
+`#/bulk` (also *Bulk Upload* on the Model List). One workbook, one sheet per model named with its Access code (or one sheet with an Access column). Download the current models for a manager, edit, drop the file back. Every sheet is checked before anything is submitted; problems are fixed in the file or the model is removed from the batch. The 84 *UBS House View* models (H001–H084) are there to exercise it; a sample file with deliberate mistakes loads from the page.
+
+## Walkthrough
+
+*Walkthrough* in the banner (or `?tour=1`) opens a dark docked panel that steps through what is new, with production behavior stated beside each change. Arrow keys move between steps; Esc closes.
+
 ## Proposed improvements (default) vs. today's behavior
 
 The twin shows proposed UX by default. Add `?ux=current` to see production behavior side by side.
@@ -73,7 +96,8 @@ The twin shows proposed UX by default. Add `?ux=current` to see production behav
 - `?ux=current` — production behavior where we propose a change (see above).
 
 - `?reset=1` — restore the seed data.
-- `?persona=blackrock` — single-manager (external manager) view. Also `americanfunds`, `capitalgroup`, `polen`, `vanguard`, `twelfthstreet`. Default is the admin view (`MDC, ART`).
+- `?persona=blackrock` — single-manager (external manager) view. Also `americanfunds`, `capitalgroup`, `polen`, `vanguard`, `twelfthstreet`, `houseview`. Default is the admin view (`MDC, ART`).
+- `?tour=1` — start the walkthrough.
 
 ## Assumptions to confirm with the MDP team
 
@@ -90,5 +114,8 @@ These behaviors weren't visible in the screenshots, so they are best guesses:
 - `js/app.js` — routing, screens, interactions
 - `js/xlsx.js` — dependency-free Excel writer/reader (works without CDN access)
 - `js/portfolios.js` — MyWay and Multi-Manager Portfolios (composition, consolidated holdings, auto-recalculation)
+- `js/uma.js` — after Submit: impact, delivery, accounts, guardrails, cross-sleeve checks, fees
 - `js/import.js` — Import drawer (paste/drop/type, detection, preview, undo)
+- `js/bulk.js` — Bulk Upload
+- `js/tour.js` — walkthrough panel
 - `js/improvements.js` — improvements log (net new vs. production)

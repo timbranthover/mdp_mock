@@ -20,7 +20,11 @@
     var STALE_DAYS = 14;
     /* distinct, muted, colour-blind-aware (Okabe-Ito family, softened); no greys so sleeves never read as UI chrome */
     var PALETTE = ['#2f6f9f', '#d9962b', '#3f9a78', '#b5679b', '#7fb3d5', '#c8603c', '#8a7bb8', '#9aa83a'];
-    var SUBS = [['details', 'Composition'], ['holdings', 'Consolidated Holdings'], ['options', 'Model Options'], ['snapshot', 'Model Snapshot']];
+    function subsFor(b) {
+      var s = [['details', 'Composition'], ['holdings', 'Consolidated Holdings']];
+      if (b.family === 'myway') s.push(['guardrails', 'Guardrails']);
+      return s.concat([['accounts', 'Accounts'], ['fees', 'Fees'], ['delivery', 'Delivery'], ['options', 'Model Options'], ['snapshot', 'Model Snapshot']]);
+    }
     var confirmedHere = null, openSec = {};
 
     var BBM = C.SEED.blockManager, UBSM = C.SEED.ubsManagers;
@@ -111,7 +115,7 @@
         b.holdings = res.holdings;
         if (b.status !== 'In Progress') { b.modified = ts; b.modifiedUser = 'System'; }
         b.snapshots[C.todayISO()] = b.holdings.map(function (h) { return { ticker: h.ticker, weight: h.weight }; });
-        C.logEvent(b, { ts: ts, event: 'Underlying Model Updated', user: 'System', details: m.access + ' (' + m.name + ') updated by ' + m.modifiedUser + '. Consolidated model recalculated and auto-published (' + (function (n) { return n + ' security change' + (n === 1 ? '' : 's'); })(changes.filter(function (c) { return c.ticker !== CASH; }).length) + ').', changes: changes });
+        C.logEvent(b, { ts: ts, event: 'Underlying Model Updated', user: 'System', src: m.access, details: m.access + ' (' + m.name + ') updated by ' + m.modifiedUser + '. Consolidated model recalculated and auto-published (' + (function (n) { return n + ' security change' + (n === 1 ? '' : 's'); })(changes.filter(function (c) { return c.ticker !== CASH; }).length) + ').', changes: changes });
         hit.push(b);
       });
       refreshStatuses();
@@ -145,7 +149,13 @@
       if (v < -EPS) return '<span class="neg">' + v.toFixed(3) + '% <i class="arr">&#9660;</i></span>';
       return '<span>0.000%</span>';
     }
-    var COMP_COLS = '<colgroup><col style="width:78px"><col><col style="width:190px"><col style="width:150px"><col style="width:150px"><col style="width:78px"><col style="width:96px"><col style="width:128px"><col style="width:104px"><col style="width:80px"></colgroup>';
+    var COMP_COLS = '<colgroup><col style="width:78px"><col><col style="width:176px"><col style="width:132px"><col style="width:150px"><col style="width:74px"><col style="width:104px"><col style="width:92px"><col style="width:128px"><col style="width:104px"><col style="width:80px"></colgroup>';
+    /* Advisor range for a block (MyWay). Blocks added in this draft get the default band until Guardrails are set. */
+    function rangeOf(b, r) { var g = b.guard && b.guard[r.access]; return g || C.SEED.defaultBand(+r.na || 0); }
+    function rangeBreaks(b, rows) {
+      if (b.family !== 'myway') return [];
+      return rows.filter(function (r) { var g = b.guard && b.guard[r.access], v = +r.na || 0; return g && v > EPS && (v < g.min - EPS || v > g.max + EPS); });
+    }
 
     function profileHtml(b) {
       if (!b.profile) return '';
@@ -161,14 +171,20 @@
           '<div class="md-actions"><span class="mt">Model Type: ' + w.fam + '</span><button data-blk="scale" id="bb-scale">' + I.refresh + 'Scale To 100%</button></div>' +
         '</div>' +
         '<div class="grid-scroll bb-scroll"><table class="grid bb-grid" id="bb-table"></table></div>' +
-        '<div class="md-foot"><table class="grid bb-grid">' + COMP_COLS + '<tr><td colspan="6"></td><td class="r" colspan="2"><span id="bb-total"></span></td><td colspan="2"></td></tr></table></div>' +
+        '<div class="md-foot"><table class="grid bb-grid">' + COMP_COLS + '<tr><td colspan="7"></td><td class="r" colspan="2"><span id="bb-total"></span></td><td colspan="2"></td></tr></table></div>' +
+        '<div id="impact" class="impact-slot"></div>' +
         '<div class="md-buttons"><button class="btn btn-text" data-blk="clear">Clear</button><button class="btn btn-tan" id="bb-submit" data-blk="submit">Submit</button><button class="btn btn-black" id="bb-confirm" data-blk="confirm">Confirm</button></div>' +
         '<div class="bb-updates" id="bb-updates"></div>';
       drawComp(b);
       drawUpdates(b);
     }
+    function rngHtml(b, r, m) {
+      if (b.family !== 'myway') return m ? num(m.feeBps || 0, 0) : '';
+      var g = rangeOf(b, r), v = +r.na || 0, out = b.guard && b.guard[r.access] && v > EPS && (v < g.min - EPS || v > g.max + EPS);
+      return '<span class="' + (out ? 'neg' : '') + '">' + num(g.min, 0) + '&ndash;' + num(g.max, 0) + '%</span>';
+    }
     function drawComp(b) {
-      var rows = rowsOf(b), w = L(b), head = '<thead><tr><th>Access</th><th>' + w.One + ' Name</th><th>Manager</th><th>Status</th><th>Last Model Update</th><th class="r">Holdings</th><th class="r">Allocation</th><th class="r">New Allocation</th><th class="r">Change</th><th></th></tr></thead>';
+      var rows = rowsOf(b), w = L(b), head = '<thead><tr><th>Access</th><th>' + w.One + ' Name</th><th>Manager</th><th>Status</th><th>Last Model Update</th><th class="r">Holdings</th><th class="r">' + (b.family === 'myway' ? 'Advisor Range<span class="ii" data-tip="Advisors may resize this block within this range. Set on the Guardrails tab." data-tip-anchor>' + I.info + '</span>' : 'Fee (bps)<span class="ii" data-tip="Manager fee in basis points (illustrative). See the Fees tab." data-tip-anchor>' + I.info + '</span>') + '</th><th class="r">Allocation</th><th class="r">New Allocation</th><th class="r">Change</th><th></th></tr></thead>';
       var body = rows.map(function (r) {
         var m = model(r.access), iss = sleeveIssue(m), a = esc(r.access);
         var flag = iss ? '<div class="bb-flag ' + iss.level + '">' + esc(iss.text) + '</div>' : '';
@@ -179,12 +195,13 @@
           '<td>' + (m ? C.statusHtml(m.status) : '') + '</td>' +
           '<td>' + (m ? fmt.listMod(m.modified) : '') + '</td>' +
           '<td class="r">' + (m ? m.holdings.length - 1 : '') + '</td>' +
+          '<td class="r bb-rng" data-rng>' + rngHtml(b, r, m) + '</td>' +
           '<td class="r">' + (r.alloc || 0).toFixed(3) + '%</td>' +
           '<td class="r"><input class="nw bb-na' + (bad(r.na) ? ' bad' : '') + '" data-a="' + a + '" value="' + (isNaN(+r.na) ? esc(r.na) : (+r.na).toFixed(3)) + '" inputmode="decimal" autocomplete="off"></td>' +
           '<td class="r" data-chg>' + chg(r) + '</td>' +
           '<td class="c"><button class="del" data-blk="remove" data-a="' + a + '">Delete</button></td></tr>';
       }).join('');
-      $('#bb-table').innerHTML = COMP_COLS + head + '<tbody>' + (body || '<tr class="empty-row"><td colspan="10">No ' + w.many + '. Add one above.</td></tr>') + '</tbody>';
+      $('#bb-table').innerHTML = COMP_COLS + head + '<tbody>' + (body || '<tr class="empty-row"><td colspan="11">No ' + w.many + '. Add one above.</td></tr>') + '</tbody>';
       totals(b);
     }
     function totals(b) {
@@ -193,13 +210,16 @@
       var sc = $('#bb-scale'); if (sc) sc.classList.toggle('is-off', !off || !t);
       var d = dirty(b), invalid = rows.some(function (r) { return bad(r.na); });
       var errs = rows.filter(function (r) { var i = sleeveIssue(model(r.access)); return +r.na > EPS && i && i.level === 'err'; });
+      var brk = rangeBreaks(b, rows);
       var why = invalid ? 'Each allocation must be a number between 0 and 100' :
         off ? 'Allocations must total 100.000% to submit. Current total: ' + t.toFixed(3) + '%' :
-        !d ? 'No changes to submit' : '';
+        !d ? 'No changes to submit' :
+        brk.length ? brk[0].access + ' at ' + (+brk[0].na).toFixed(3) + '% is outside its advisor range (' + b.guard[brk[0].access].min + '-' + b.guard[brk[0].access].max + '%). Change the range on the Guardrails tab first, or keep the target inside it.' : '';
       C.setBtn($('#bb-submit'), why);
       C.setBtn($('#bb-confirm'), confirmedHere === b.access ? 'Portfolio already confirmed at ' + fmt.conf(b.confirmed) + '.' : d ? 'Confirm is available only when there are no changes. Submit or clear your changes first.' : '');
       var sb = $('#bb-submit');
       if (sb && !why && errs.length) sb.setAttribute('data-warn', errs.map(function (r) { return r.access; }).join(', ')); else if (sb) sb.removeAttribute('data-warn');
+      if (C.U) C.U.paintImpact(b, d && !invalid ? C.U.portfolioChanges(b) : null);
     }
     function drawUpdates(b) {
       var ev = C.eventsDesc(b).filter(function (e) { return e.event === 'Underlying Model Updated' || e.event === 'Underlying Model Needs Attention'; }).slice(0, 5);
@@ -231,6 +251,10 @@
       var overlap = non.filter(function (h) { return (contrib[h.ticker] || []).length > 1; });
       var conc = non.filter(overLimit);
       var ovW = r3(overlap.reduce(function (a, h) { return a + h.weight; }, 0));
+      // cross-sleeve conflicts: one sleeve reduced a security another sleeve added within 30 days (js/uma.js)
+      var xsBy = {}, nowW = C.U ? C.U.nowWall() : 0;
+      (C.U && !preview ? C.U.conflicts(b) : []).forEach(function (x) { if (contrib[x.ticker]) xsBy[x.ticker] = x; });
+      var xsN = Object.keys(xsBy).length;
       var stat = {}; sl.forEach(function (s) { stat[s.access] = { n: 0, uniq: 0 }; });
       non.forEach(function (h) { var ps = contrib[h.ticker] || []; ps.forEach(function (p) { if (stat[p.access]) { stat[p.access].n++; if (ps.length === 1) stat[p.access].uniq++; } }); });
 
@@ -265,6 +289,7 @@
           if (q && (h.ticker + ' ' + (sd ? sd.desc : '')).toLowerCase().indexOf(q) < 0) return false;
           if (f === 'overlap' && ps.length < 2) return false;
           if (f === 'conc' && !overLimit(h)) return false;
+          if (f === 'xs' && !xsBy[h.ticker]) return false;
           if (sx && !ps.some(function (p) { return p.access === sx; })) return false;
           return true;
         });
@@ -279,7 +304,7 @@
         });
         var showCash = cash && !q && f === 'all' && !sx;
         var chip = function (v, label, n) { return '<button class="fchip' + (f === v ? ' on' : '') + '" data-blk="hf" data-v="' + v + '">' + label + ' <b>' + n + '</b></button>'; };
-        $('#bb-chips').innerHTML = chip('all', 'All', non.length) + chip('overlap', 'Held By 2+', overlap.length) + chip('conc', 'Stocks Above 5%', conc.length) +
+        $('#bb-chips').innerHTML = chip('all', 'All', non.length) + chip('overlap', 'Held By 2+', overlap.length) + chip('conc', 'Stocks Above 5%', conc.length) + (xsN || f === 'xs' ? chip('xs', 'Cross-Sleeve Conflicts', xsN) : '') +
           (sx ? '<button class="fchip on bb-slchip" data-blk="hsl" data-v="' + esc(sx) + '" style="--c:' + colorOf(b, sx) + '"><i></i>' + esc(sx) + ' only <span aria-hidden="true">&times;</span></button>' : '');
         Array.prototype.forEach.call(document.querySelectorAll('.bb-card'), function (el) { var v = el.getAttribute('data-v'); el.classList.toggle('on', v === sx); el.classList.toggle('dim', !!sx && v !== sx); });
 
@@ -296,7 +321,7 @@
           }).join('') + '</div></div>';
           var dots = '<span class="bb-dots">' + ps.map(function (p) { return '<i style="background:' + colorOf(b, p.access) + '" class="' + (sx && p.access !== sx ? 'dim' : '') + '"></i>'; }).join('') + '</span>' + (isCash ? '' : ps.length > 1 ? '<span class="bb-ov">' + ps.length + ' ' + w.many + '</span>' : '<span class="bb-one">' + esc(ps[0] ? ps[0].access : '') + ' only</span>');
           var out = '<tr class="bb-sec' + (open ? ' open' : '') + (isCash ? ' bb-cash' : '') + '" data-blk="sec" data-t="' + esc(h.ticker) + '">' +
-            '<td class="chevc">' + I.chev + '</td><td class="r bb-rk">' + (isCash ? '' : rank[h.ticker]) + '</td><td class="b">' + esc(h.ticker) + '</td>' +
+            '<td class="chevc">' + I.chev + '</td><td class="r bb-rk">' + (isCash ? '' : rank[h.ticker]) + '</td><td class="b">' + esc(h.ticker) + (xsBy[h.ticker] ? '<span class="ca-ic" data-tip="' + esc(C.U.conflictText(xsBy[h.ticker], nowW)) + '" data-tip-anchor>' + I.attn + '</span>' : '') + '</td>' +
             '<td data-tip="' + esc(isCash ? 'USD Cash' : sd ? sd.desc : '') + '" data-tip-trunc>' + esc(isCash ? 'Residual cash from the ' + w.many : sd ? sd.desc : '') + '</td>' +
             '<td class="r bb-w' + (big ? ' big' : '') + '"' + (big ? ' data-tip="Above the 5% single-security review level" data-tip-anchor' : '') + '>' + (big ? '<span class="bb-wi">' + I.attn + '</span>' : '') + pct(h.weight) + '</td>' +
             '<td>' + bar + '</td><td>' + dots + '</td><td class="r bb-cum">' + (isCash ? '' : pct(cum[h.ticker])) + '</td></tr>';
@@ -308,7 +333,8 @@
                   '<span class="bb-math-e">' + pct(p.w) + ' <em>&times;</em> ' + num(p.alloc, 3) + '% <em>=</em> <b>' + pct(p.c) + '</b></span>' +
                   '<span class="bb-math-b"><i style="width:' + share + '%;background:' + colorOf(b, p.access) + '"></i></span><span class="bb-math-p">' + share.toFixed(1) + '%</span></div>';
               }).join('') +
-              '<div class="bb-math-r tot"><span class="bb-math-s">Combined</span><span class="bb-math-e"><b>' + pct(h.weight) + '</b></span><span></span><span class="bb-math-p">100%</span></div></div></td></tr>';
+              '<div class="bb-math-r tot"><span class="bb-math-s">Combined</span><span class="bb-math-e"><b>' + pct(h.weight) + '</b></span><span></span><span class="bb-math-p">100%</span></div>' +
+              (xsBy[h.ticker] ? '<div class="bb-math-x">' + I.attn + '<span><b>Cross-sleeve conflict.</b> ' + esc(C.U.conflictText(xsBy[h.ticker], nowW)) + '</span></div>' : '') + '</div></td></tr>';
           }
           return out;
         };
@@ -366,19 +392,26 @@
           foot: '<button class="btn btn-text" data-act="close-modal">Go Back</button><button class="btn btn-tan" data-blk="submit-anyway" autofocus>Submit Anyway</button>' });
         return;
       }
+      var secChanges = C.U ? C.U.portfolioChanges(b) : [];
       var ts = C.nowStamp(), cur = {}; b.sleeves.forEach(function (s) { cur[s.access] = s.alloc; });
       var changes = [];
       d.rows.forEach(function (r) { var f = cur[r.access] || 0, to = r3(+r.na || 0); if (Math.abs(f - to) > EPS) changes.push({ ticker: r.access, from: f, to: to }); delete cur[r.access]; });
       Object.keys(cur).forEach(function (a) { changes.push({ ticker: a, from: cur[a], to: 0 }); });
       b.sleeves = d.rows.filter(function (r) { return +r.na > EPS; }).map(function (r) { return { access: r.access, alloc: r3(+r.na) }; });
+      if (b.family === 'myway') {
+        // guardrails follow the composition: new blocks get the default band, removed blocks drop out
+        var g2 = {}, sw2 = {};
+        b.sleeves.forEach(function (s) { g2[s.access] = (b.guard && b.guard[s.access]) || C.SEED.defaultBand(s.alloc); if (b.swaps && b.swaps[s.access]) sw2[s.access] = b.swaps[s.access].filter(function (x) { return !b.sleeves.some(function (y) { return y.access === x; }); }); });
+        b.guard = g2; b.swaps = sw2;
+      }
       b.holdings = calc(b, false).holdings;
       delete b.bdraft;
       b.status = 'Approved'; b.modified = ts; b.modifiedUser = C.persona.user;
       b.snapshots[C.todayISO()] = b.holdings.map(function (h) { return { ticker: h.ticker, weight: h.weight }; });
       C.logEvent(b, { ts: ts, event: C.isAdmin() ? 'Portfolio Updated By Admin' : 'Portfolio Updated', user: C.persona.user, details: changes.length + ' allocation change' + (changes.length === 1 ? '' : 's'), changes: changes });
-      C.logEvent(b, { ts: ts, event: 'Portfolio Approved', user: C.persona.user, details: 'Consolidated model recalculated and published (' + (b.holdings.length - 1) + ' securities)' });
+      C.logEvent(b, { ts: ts, event: 'Portfolio Approved', user: C.persona.user, details: 'Consolidated model recalculated and published (' + (b.holdings.length - 1) + ' securities)', sec: secChanges });
       refreshStatuses(); C.save(); C.closeModal(); C.route();
-      C.successCard(b, 'Portfolio Approved', changes.length + ' allocation change' + (changes.length === 1 ? '' : 's') + ' · consolidated model published', ts);
+      C.successCard(b, 'Portfolio Approved', changes.length + ' allocation change' + (changes.length === 1 ? '' : 's') + ' · consolidated model published', ts, C.trackHref(b));
     }
     function confirmBlock(b) {
       var cb = $('#bb-confirm'); if (cb && cb.classList.contains('is-disabled')) return;
@@ -425,7 +458,9 @@
       var d = startDraft(b), row = d.rows.filter(function (r) { return r.access === e.target.getAttribute('data-a'); })[0], v = e.target.value.trim();
       row.na = v === '' ? '' : (isNaN(+v) ? v : +v);
       e.target.classList.toggle('bad', bad(row.na));
-      e.target.closest('tr').querySelector('[data-chg]').innerHTML = chg(row);
+      var trEl = e.target.closest('tr');
+      trEl.querySelector('[data-chg]').innerHTML = chg(row);
+      trEl.querySelector('[data-rng]').innerHTML = rngHtml(b, row, model(row.access));
       totals(b);
     });
     document.addEventListener('change', function (e) { if (e.target.classList.contains('bb-na') && !bad(e.target.value)) e.target.value = (+e.target.value).toFixed(3); });
@@ -440,7 +475,7 @@
 
     refreshStatuses();
     return {
-      SUBS: SUBS, renderComposition: renderComposition, renderHoldings: renderHoldings, refreshStatuses: refreshStatuses,
+      subsFor: subsFor, calc: calc, sleevesOf: sleevesOf, colorOf: colorOf, dirty: dirty, blocks: blocks, sleeveIssue: sleeveIssue, eligibleWhy: eligibleWhy, renderComposition: renderComposition, renderHoldings: renderHoldings, refreshStatuses: refreshStatuses,
       reason: reason, memberHtml: memberHtml, onUnderlyingApproved: onUnderlyingApproved, exportBlock: exportBlock, isBlock: isBlock, label: L, usedIn: usedIn,
       leave: function (access) { if (confirmedHere !== access) confirmedHere = null; },
       isEditing: function (b) { return !!(b.bdraft && b.bdraft.live); }

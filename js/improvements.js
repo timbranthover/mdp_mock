@@ -180,6 +180,54 @@
       change: 'A building block or third-party model\'s page shows which portfolios use it and at what allocation, with links. Third-party managers never see portfolios or this notice: their view of their own model is unchanged.',
       why: 'UBS users can see the impact of a model change before approving it.', added: '2026-10-28', status: P, try: '#/model/N612/info/details' },
 
+    // ---------- After Submit: impact and delivery ----------
+    { id: 'DL-01', area: 'Delivery', title: 'Impact shown before approval',
+      today: 'Submit gives no indication of what a change affects.',
+      change: 'As soon as a weight or allocation changes, a strip under the grid shows the number of securities changing, turnover, accounts on the model, the portfolios that will be recalculated (with accounts and turnover in each), when trading will start, and any cross-sleeve conflict the change would create. External managers see only their own model\'s figures.',
+      why: 'The person approving knows the reach of the change before it is published.', added: '2026-11-09', status: P, try: '#/model/N611/info/details' },
+    { id: 'DL-02', area: 'Delivery', title: 'Delivery tracking on every model',
+      today: 'After "Model Approved" MDP shows nothing further. Whether accounts traded is visible only in Vestmark.',
+      change: 'New Delivery tab. Each approval is one delivery with its own ID, followed through Approved in MDP, Sent to Vestmark, Trading, Trades complete and Reconciled, with accounts traded, exceptions by account and reason, and history. It updates while trading is in progress, and queues for the next market open when approved after hours.',
+      why: 'One place to confirm that a model change reached every account. This is the roadmap item "trade completion status tied to model changes".', added: '2026-11-09', status: P, try: '#/model/N622/info/delivery' },
+    { id: 'DL-03', area: 'Delivery', title: 'Delivery dashboard across all models',
+      today: 'No cross-model view of what was delivered, what is trading or what failed.',
+      change: 'Delivery page (banner): deliveries today / 7 days / 30 days, in flight, accounts traded, open exceptions, median time from approval to trades complete, and the models needing action in MDP (links to the filtered Model List). A change to an underlying model appears once for each portfolio that uses it.',
+      why: 'Governance view of the whole chain from MDP to Vestmark. Scoped to the manager for external users.', added: '2026-11-09', status: P, try: '#/delivery' },
+
+    // ---------- Portfolios: advisor limits, accounts, checks, fees ----------
+    { id: 'PF-08', area: 'Portfolios', title: 'Advisor guardrails and approved swaps',
+      today: 'Allowed ranges and permitted substitutions are not held in any system.',
+      change: 'Guardrails tab on MyWay Portfolios: minimum and maximum per building block, approved like-for-like swaps, a count of customized accounts that would fall outside a new range, and the published feed (viewable, downloadable as JSON) that the proposal tool, enrollment and rebalancing would read. A target cannot be approved outside its range.',
+      why: 'One authoritative record of what advisors may change, consistent across proposal, enrollment and maintenance.', added: '2026-11-09', status: P, try: '#/model/W204/info/guardrails' },
+    { id: 'PF-09', area: 'Portfolios', title: 'Account look-through by sleeve',
+      today: 'No system shows an account sleeve by sleeve, so no one sees the whole account.',
+      change: 'Accounts tab on portfolios: every account with its sleeve weights, drift, customization, restrictions and tax-managed flag; filters for rebalance due and outside guardrail. Opening an account shows each sleeve against target and range and every holding traced to the sleeve it comes from. Account data would come from Vestmark.',
+      why: 'Shows the whole account in one view and ties each position back to the model that created it.', added: '2026-11-09', status: P, try: '#/model/W204/info/accounts' },
+    { id: 'PF-10', area: 'Portfolios', title: 'Cross-sleeve conflict check',
+      today: 'Not available.',
+      change: 'Flags a security that one sleeve of a portfolio reduced while another sleeve added it within 30 days (possible wash sale in taxable accounts). Shown on Consolidated Holdings (filter, marker, detail) and in the impact strip before a change is approved.',
+      why: 'Catches a tax problem that no single manager can see, before the trades happen.', added: '2026-11-09', status: P, try: '#/model/W204/info/holdings' },
+    { id: 'PF-11', area: 'Portfolios', title: 'Fee look-through and billing feed',
+      today: 'A portfolio that uses several managers has no billing breakdown.',
+      change: 'Fees tab on portfolios: billable assets per sleeve (portfolio assets × allocation), manager fee, blended fee in basis points, overlay fee, a per-manager billing feed (Excel), and a preview of how an unsubmitted allocation changes the blended fee. Rates are illustrative.',
+      why: 'Gives billing the split it needs and shows the cost effect of an allocation change before approval.', added: '2026-11-09', status: P, try: '#/model/M102/info/fees' },
+
+    // ---------- Bulk ----------
+    { id: 'BK-01', area: 'Bulk', title: 'Bulk upload: many models from one workbook',
+      today: 'Models are updated one at a time.',
+      change: 'Bulk Upload page (Model List): one workbook with a sheet per model (sheet name = Access code), or one sheet with an Access column. Every sheet is checked first; each model shows Ready, No change or its problems. Problems must be fixed in the file or the model removed from the batch. Each model is then submitted through the normal path (audit trail, snapshot, portfolio recalculation, delivery).',
+      why: 'Lets a team that maintains a family of models (for example the 84 House View models) update them in one pass with the same controls.', added: '2026-11-09', status: P, try: '#/bulk' },
+    { id: 'BK-02', area: 'Bulk', title: 'Bulk download in the upload format',
+      today: 'Models are downloaded one at a time.',
+      change: 'Download one workbook with the current weights of every model for a manager, one sheet each, ready to edit and upload back.',
+      why: 'The round trip needs no reformatting.', added: '2026-11-09', status: P, try: '#/bulk' },
+
+    // ---------- Walkthrough ----------
+    { id: 'WT-01', area: 'Walkthrough', title: 'Step-by-step walkthrough of what is new',
+      today: 'Not applicable.',
+      change: 'A docked panel (Walkthrough in the banner, or ?tour=1) steps through the new screens, stating production behavior and what differs here, and can perform the sample actions. It is a review aid for this twin, not a proposed product feature.',
+      why: 'Lets a reviewer who knows today\'s MDP see the proposed changes in a few minutes.', added: '2026-11-09', status: P, try: '#/' },
+
     // ---------- Visual ----------
     { id: 'UI-01', area: 'Visual', title: 'Brand-aligned banner color',
       today: 'Dark charcoal page banner.',
