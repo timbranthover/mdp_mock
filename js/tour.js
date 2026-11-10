@@ -40,7 +40,7 @@
 
   var STEPS = [
     { ch: 'Start', title: 'What this walkthrough shows', go: '#/',
-      text: 'The Model Delivery Portal today: managers enter model weights, UBS approves them, Vestmark trades them. This twin keeps all of that and adds what a UMA needs around it.',
+      text: 'The Model Delivery Portal today: managers enter model weights, the firm approves them, Vestmark trades them. This twin keeps all of that and adds what a UMA needs around it.',
       note: 'About 5 minutes. All data is mock. Each step opens a real screen you can use.' },
 
     { ch: 'Today', title: 'A model is a list of target weights', go: '#/model/N611/info/details', look: '#md-table',
@@ -61,9 +61,9 @@
       today: 'There is no view across models of what was delivered, what is still trading, or what failed.',
       here: 'All deliveries, open exceptions, and the models that need action. A change to one underlying model appears once for each portfolio that uses it: filter on "From Underlying Models".' },
 
-    { ch: 'MyWay', title: 'A UBS building block is an ordinary model', go: '#/model/B306/info/details', look: '#d-why',
-      today: 'Models are maintained by third-party managers and UBS AM.',
-      here: 'UBS CIO maintains the eight ETF building blocks on the same screen, with the same rules and audit trail. The notice lists the starting allocations each block feeds.' },
+    { ch: 'MyWay', title: 'A building block is an ordinary model', go: '#/model/B306/info/details', look: '#d-why',
+      today: 'Models are maintained by third-party managers and in-house asset management.',
+      here: 'CIO maintains the eight ETF building blocks on the same screen, with the same rules and audit trail. The notice lists the starting allocations each block feeds.' },
 
     { ch: 'MyWay', title: 'A starting allocation is a mix of blocks', go: '#/model/W202/info/details', look: '#bb-table',
       today: 'A model made of other models cannot be expressed in MDP.',
@@ -97,7 +97,7 @@
 
     { ch: 'Scale', title: 'What an external manager sees', go: '#/', look: '#ml-table',
       today: 'A manager sees only their own models.',
-      here: 'Unchanged. Managers get the Delivery tab for their own models. Portfolios, accounts and fees are visible to UBS only.',
+      here: 'Unchanged. Managers get the Delivery tab for their own models. Portfolios, accounts and fees are visible to internal users only.',
       note: 'End of walkthrough. Everything new is listed under Improvements in the banner, with production behavior beside it.',
       link: { label: 'Open the Polen manager view in a new tab', href: '?persona=polen#/' } }
   ];

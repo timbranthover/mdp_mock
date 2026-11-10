@@ -151,17 +151,17 @@
       why: 'Easier to read across wide rows.', added: D, status: P },
 
     // ---------- Portfolios (MyWay + Multi-Manager) ----------
-    { id: 'PF-01', area: 'Portfolios', title: 'MyWay Portfolios built from UBS Building Blocks',
-      today: 'Not available. UBS CIO allocations cannot be expressed as a model of models in MDP.',
-      change: 'Eight UBS Building Blocks (ETF models run by UBS CIO: cash, four fixed income, three equity) are ordinary models, edited on Model Details like any SMA. MyWay starting allocations (Conservative, Moderate, Aggressive SAA) are made only of those blocks. The client questionnaire picks one; advisors then tailor it at the block level. Each SAA shows its cash / fixed income / equity structure.',
+    { id: 'PF-01', area: 'Portfolios', title: 'MyWay Portfolios built from Building Blocks',
+      today: 'Not available. CIO allocations cannot be expressed as a model of models in MDP.',
+      change: 'Eight Building Blocks (ETF models run by CIO: cash, four fixed income, three equity) are ordinary models, edited on Model Details like any SMA. MyWay starting allocations (Conservative, Moderate, Aggressive SAA) are made only of those blocks. The client questionnaire picks one; advisors then tailor it at the block level. Each SAA shows its cash / fixed income / equity structure.',
       why: 'Matches the CIO design: tailoring happens at the building-block level, inside the same tool, lifecycle and audit trail as every model.', added: '2026-11-02', status: P, try: '#/model/W202/info/details' },
     { id: 'PF-02', area: 'Portfolios', title: 'Multi-Manager Portfolios built from third-party SMAs',
-      today: 'Not available. A UBS strategy built from several third-party SMA models has to be assembled and maintained outside MDP.',
-      change: 'Multi-Manager Portfolios (MM tag) combine third-party SMA models with a UBS allocation. Third-party managers keep maintaining their own model and never see the portfolio.',
-      why: 'Puts UBS discretionary multi-manager offerings inside MDP with the same controls as every other model.', added: '2026-10-28', status: P, try: '#/model/M101/info/details' },
+      today: 'Not available. An in-house strategy built from several third-party SMA models has to be assembled and maintained outside MDP.',
+      change: 'Multi-Manager Portfolios (MM tag) combine third-party SMA models with an in-house allocation. Third-party managers keep maintaining their own model and never see the portfolio.',
+      why: 'Puts in-house discretionary multi-manager offerings inside MDP with the same controls as every other model.', added: '2026-10-28', status: P, try: '#/model/M101/info/details' },
     { id: 'PF-03', area: 'Portfolios', title: 'Composition editor with portfolio rules',
       today: 'Not available.',
-      change: 'Composition tab: add underlying models by Access code or name, set allocations (must total 100%), Scale To 100%, delete, Clear / Submit / Confirm with the same rules as Model Details. Rules are enforced as you add: MyWay takes UBS Building Blocks only, Multi-Manager takes third-party SMAs only, and a portfolio cannot contain another portfolio.',
+      change: 'Composition tab: add underlying models by Access code or name, set allocations (must total 100%), Scale To 100%, delete, Clear / Submit / Confirm with the same rules as Model Details. Rules are enforced as you add: MyWay takes Building Blocks only, Multi-Manager takes third-party SMAs only, and a portfolio cannot contain another portfolio.',
       why: 'Allocation changes are made, checked and approved in one place, and the two product lines cannot be mixed by mistake.', added: '2026-10-28', status: P, try: '#/model/W203/info/details' },
     { id: 'PF-04', area: 'Portfolios', title: 'Consolidated holdings with drill-down',
       today: 'Not available.',
@@ -175,10 +175,10 @@
       today: 'Not available.',
       change: 'If an underlying model is Rejected, Needs Attention or has no approved model, the portfolio shows Needs Attention with the reason and an "Open" link to that model. Models being edited are shown (the portfolio keeps the last approved version) and models not updated in 14+ days are flagged as stale.',
       why: 'Problems are visible at the portfolio level before they reach client accounts.', added: '2026-10-28', status: P, try: '#/model/W203/info/details' },
-    { id: 'PF-07', area: 'Portfolios', title: 'Where-used shown on every underlying model (UBS view only)',
+    { id: 'PF-07', area: 'Portfolios', title: 'Where-used shown on every underlying model (internal view only)',
       today: 'Not available.',
       change: 'A building block or third-party model\'s page shows which portfolios use it and at what allocation, with links. Third-party managers never see portfolios or this notice: their view of their own model is unchanged.',
-      why: 'UBS users can see the impact of a model change before approving it.', added: '2026-10-28', status: P, try: '#/model/N612/info/details' },
+      why: 'Internal users can see the impact of a model change before approving it.', added: '2026-10-28', status: P, try: '#/model/N612/info/details' },
 
     // ---------- After Submit: impact and delivery ----------
     { id: 'DL-01', area: 'Delivery', title: 'Impact shown before approval',
@@ -231,7 +231,7 @@
     // ---------- Visual ----------
     { id: 'UI-01', area: 'Visual', title: 'Brand-aligned banner color',
       today: 'Dark charcoal page banner.',
-      change: 'Banner uses #5A5D5C from the UBS palette.',
+      change: 'Banner uses #5A5D5C from the house palette.',
       why: 'Consistent with brand guidelines.', added: D, status: P }
   ];
 })();

@@ -452,10 +452,10 @@
     var cl = $('[data-act="f-clear"]'); if (cl) cl.classList.toggle('on', !!(n || filterCount(S.list.applied)));
   }
 
-  /* small tag before the name: MW = MyWay Portfolio, MM = Multi-Manager Portfolio, BB = UBS Building Block */
+  /* small tag before the name: MW = MyWay Portfolio, MM = Multi-Manager Portfolio, BB = Building Block */
   function typeTag(m) {
     if (m.parent) return '<span class="bb-tag ' + (m.family === 'myway' ? 't-mw' : 't-mm') + '" data-tip="' + esc(B.label(m).fam) + ': ' + m.sleeves.length + ' ' + B.label(m).many + '" data-tip-anchor>' + (m.family === 'myway' ? 'MW' : 'MM') + '</span>';
-    if (B.isBlock(m)) return '<span class="bb-tag t-bb" data-tip="UBS Building Block" data-tip-anchor>BB</span>';
+    if (B.isBlock(m)) return '<span class="bb-tag t-bb" data-tip="Building Block" data-tip-anchor>BB</span>';
     return '';
   }
   function rowHtml(m) {
@@ -600,7 +600,7 @@
       '<div class="mf"><span class="k">Confirmed</span><span class="v">' + (m.confirmed ? fmt.full(m.confirmed) : 'N/A') + '</span></div>' +
       '<div class="mf"><span class="k">Status</span><span class="v">' + statusHtml(m.status) + '</span></div>' +
       (m.parent ? '<div class="mf"><span class="k">Model Type</span><span class="v">' + B.label(m).fam + ' &middot; ' + m.sleeves.length + ' ' + B.label(m).many + '</span></div>' :
-        B.isBlock(m) ? '<div class="mf"><span class="k">Model Type</span><span class="v">UBS Building Block</span></div>' : '') +
+        B.isBlock(m) ? '<div class="mf"><span class="k">Model Type</span><span class="v">Building Block</span></div>' : '') +
       '<div class="meta-tools"><button class="icon-btn" data-act="model-export" data-acc="' + esc(m.access) + '" data-tip="Download" data-tip-anchor>' + I.download + '</button><button class="icon-btn" data-act="print" data-tip="Print" data-tip-anchor>' + I.print + '</button></div>';
   }
 

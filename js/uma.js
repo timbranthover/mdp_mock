@@ -531,7 +531,7 @@
             var bad = mw && ((g && x.tgt > 0.05 && (x.tgt < g.min - 0.05 || x.tgt > g.max + 0.05)) || (g && g.min > 0.05 && !(x.tgt > 0.05)) || (!g && ad && x.tgt > ad.max + 0.05) || (!g && !ad && x.tgt > 0.05));
             var rng = g ? g.min + '&ndash;' + g.max + '%' : ad ? '0&ndash;' + ad.max + '%' : 'not allowed';
             var dr = Math.round((x.act - x.tgt) * 10) / 10;
-            return '<tr><td><span class="bb-dot" style="background:' + color(p, acc2) + '"></span><b>' + esc(acc2) + '</b> <span class="ac-nm">' + esc(m ? m.name.replace(/^UBS Building Block \d - /, '') : '') + '</span>' + tag +
+            return '<tr><td><span class="bb-dot" style="background:' + color(p, acc2) + '"></span><b>' + esc(acc2) + '</b> <span class="ac-nm">' + esc(m ? m.name.replace(/^Building Block \d - /, '') : '') + '</span>' + tag +
               (bad ? '<div class="bb-flag err">Outside range ' + rng + '</div>' : '') + '</td><td class="r">' + (st ? st.toFixed(1) + '%' : '-') + '</td><td class="r' + (Math.abs(x.tgt - st) > 0.05 ? ' b' : '') + '">' + (x.tgt > 0 ? x.tgt.toFixed(1) + '%' : '-') + '</td><td class="r">' + (x.act > 0 ? x.act.toFixed(1) + '%' : '-') + '</td><td class="r ' + (Math.abs(dr) > DRIFT_LIMIT ? 'neg b' : '') + '">' + (x.tgt > 0 ? (dr > 0 ? '+' : '') + dr.toFixed(1) : '') + '</td></tr>';
           }).join('') + '</tbody></table>' +
           (a.restr ? '<div class="ac-note">' + I.info + '<span><b>' + a.restr.type + ': ' + esc(a.restr.ticker) + '.</b> ' + (a.restr.type === 'Do not hold' ? 'Its weight is held in cash in this account.' : 'Reductions in this security are not traded in this account.') + '</span></div>' : '') +
@@ -623,7 +623,7 @@
           var s = p.sleeves[i], m = model(s.access), mn = +r.min || 0, mx = +r.max || 0, scale = 100, outside = 0, dots = '';
           accts.forEach(function (a, k) { if (!a.custom) return; var x = a.mix.filter(function (y) { return y.access === s.access; })[0], v = x ? x.tgt : 0, o = v < mn - 0.05 || v > mx + 0.05; if (o) outside++; if (k % 3 === 0) dots += '<i style="left:' + Math.min(100, v / scale * 100) + '%" class="' + (o ? 'o' : '') + '"></i>'; });
           var bad = badNum(r.min, 0, 100) || badNum(r.max, 0, 100) || mn > s.alloc + EPS || mx < s.alloc - EPS;
-          return '<tr data-i="' + i + '"><td class="b"><span class="bb-dot" style="background:' + color(p, s.access) + '"></span>' + esc(s.access) + '</td><td class="gd-nm">' + esc(m ? m.name.replace(/^UBS /, '') : '') + (mn === 0 ? '<div><span class="ac-f" data-tip="Minimum 0: advisors may remove this block" data-tip-anchor>Removable</span></div>' : '') + '</td><td>' + classOf(s.access) + '</td>' +
+          return '<tr data-i="' + i + '"><td class="b"><span class="bb-dot" style="background:' + color(p, s.access) + '"></span>' + esc(s.access) + '</td><td class="gd-nm">' + esc(m ? m.name : '') + (mn === 0 ? '<div><span class="ac-f" data-tip="Minimum 0: advisors may remove this block" data-tip-anchor>Removable</span></div>' : '') + '</td><td>' + classOf(s.access) + '</td>' +
             '<td class="r b">' + num(s.alloc, 1) + '%</td>' +
             '<td class="r"><input class="nw gd-in' + (bad ? ' bad' : '') + '" data-g="min" value="' + esc(r.min) + '" inputmode="decimal" autocomplete="off"></td>' +
             '<td class="r"><input class="nw gd-in' + (bad ? ' bad' : '') + '" data-g="max" value="' + esc(r.max) + '" inputmode="decimal" autocomplete="off"></td>' +
@@ -634,7 +634,7 @@
         '<thead><tr><th>Access</th><th>Building Block</th><th>Asset class</th><th class="r"></th><th class="r">Max %</th><th></th><th class="r">Accounts using</th><th></th></tr></thead><tbody>' +
         G.adds.map(function (x, i) {
           var m = model(x.access), using = accts.filter(function (a) { return a.mix.some(function (y) { return y.access === x.access && y.tgt > 0.05; }); }).length;
-          return '<tr data-a="' + i + '"><td class="b"><span class="bb-dot" style="background:' + color(p, x.access) + '"></span>' + esc(x.access) + '</td><td class="gd-nm">' + esc(m ? m.name.replace(/^UBS /, '') : '') + '</td><td>' + classOf(x.access) + '</td><td></td>' +
+          return '<tr data-a="' + i + '"><td class="b"><span class="bb-dot" style="background:' + color(p, x.access) + '"></span>' + esc(x.access) + '</td><td class="gd-nm">' + esc(m ? m.name : '') + '</td><td>' + classOf(x.access) + '</td><td></td>' +
             '<td class="r"><input class="nw gd-ad' + (badNum(x.max, 1, 100) ? ' bad' : '') + '" value="' + esc(x.max) + '" inputmode="decimal" autocomplete="off"></td><td></td><td class="r">' + using + '</td><td class="c"><button class="del" data-u="gd-unadd" data-v="' + esc(x.access) + '">Remove</button></td></tr>';
         }).join('') +
         '<tr class="gd-addrow"><td colspan="8"><input class="gd-add" list="gd-list" placeholder="Add a block advisors may use (Access code)" data-addblock autocomplete="off"><datalist id="gd-list">' + blockOpts(p) + '</datalist></td></tr></tbody>';
@@ -700,12 +700,12 @@
       var byMgr = {}; rows.forEach(function (r) { var k = r.manager; byMgr[k] = byMgr[k] || { manager: k, assets: 0, fee: 0, n: 0 }; byMgr[k].assets += r.assets; byMgr[k].fee += r.fee; byMgr[k].n++; });
       var mgrs = Object.keys(byMgr).map(function (k) { return byMgr[k]; }).sort(function (a, b) { return b.assets - a.assets; });
       var tile = function (k, v, s) { return '<div class="bb-tile"><span class="k">' + k + '</span><span class="v">' + v + '</span><span class="s">' + s + '</span></div>'; };
-      var ubs = p.family === 'myway';
+      var inh = p.family === 'myway';
       c.innerHTML =
         (preview ? '<div class="bb-prev">' + I.info + '<span><b>Preview.</b> Fees under your unsubmitted allocation. Blended manager fee ' + num(bl0, 1) + ' to ' + num(bl, 1) + ' bps (' + (bl - bl0 >= 0 ? '+' : '') + num(bl - bl0, 1) + ').</span></div>' : '') +
         '<div class="bb-tiles">' + tile('Portfolio Assets', money(p.aum), num(p.accounts, 0) + ' accounts') +
-          tile('Blended Manager Fee', num(bl, 1) + ' <small>bps</small>', ubs ? 'UBS-managed blocks: no third-party fee' : 'allocation-weighted') +
-          tile('Manager Fees Per Year', money(tot), ubs ? 'none payable' : 'to ' + plural(mgrs.length, 'manager')) +
+          tile('Blended Manager Fee', num(bl, 1) + ' <small>bps</small>', inh ? 'In-house blocks: no third-party fee' : 'allocation-weighted') +
+          tile('Manager Fees Per Year', money(tot), inh ? 'none payable' : 'to ' + plural(mgrs.length, 'manager')) +
           tile('Overlay Fee', num(ov, 1) + ' <small>bps</small>', money(p.aum * ov / 1e4) + ' per year') +
           tile('Manager + Overlay', num(bl + ov, 1) + ' <small>bps</small>', money(tot + p.aum * ov / 1e4) + ' per year') + '</div>' +
         '<div class="dv-sec-h">By ' + w.one + ' <span>Billable assets = portfolio assets &times; allocation. They move when the allocation is approved.</span></div>' +
@@ -753,7 +753,7 @@
     function addBlock(inp) {
       var m = C.currentModel(), tok = inp.value.trim().split(/\s/)[0].toUpperCase(), x = model(tok);
       if (!tok) return;
-      var why = !x ? 'Model not found: ' + tok : !B().isBlock(x) ? 'Only UBS Building Blocks can be added to a MyWay portfolio' : x.status === 'New' ? tok + ' has no approved model yet' :
+      var why = !x ? 'Model not found: ' + tok : !B().isBlock(x) ? 'Only Building Blocks can be added to a MyWay portfolio' : x.status === 'New' ? tok + ' has no approved model yet' :
         m.sleeves.some(function (s) { return s.access === tok; }) ? tok + ' is already in the starting allocation' : GD.adds.some(function (y) { return y.access === tok; }) ? tok + ' is already listed' : '';
       if (why) { C.toast(why); inp.value = ''; return; }
       GD.adds.push({ access: tok, max: 10 }); drawGuard(m);

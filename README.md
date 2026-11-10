@@ -47,13 +47,13 @@ A right-side drawer replaces "pick a file". Open it with **Import** on Model Det
 - **No files at all:** *Copy Current Model* puts the data on the clipboard for Excel. Edit it, then paste it back.
 - Every import is logged in the audit trail as **Model Imported**.
 
-## Portfolios (proposed, UBS CIO view)
+## Portfolios (proposed, CIO view)
 
-Three kinds of UBS CIO models:
+Three kinds of CIO models:
 
-- **UBS Building Blocks** (B301–B308, *UBS CIO Building Blocks*): ordinary models holding ETFs, modelled on the CIO "Portfolio Building Blocks" design: 1 Cash, 2 Fixed Income (Short Duration), 3 Fixed Income (Intermediate), 4 Fixed Income (Long Duration), 5 High Yield & EM Debt, 6 US Equity, 7 International Equity (Developed + EM), 8 International Developed Equity. Edited on Model Details.
-- **MyWay starting allocations** (W201 Conservative, W202 Moderate, W203 Aggressive SAA): made only of UBS Building Blocks. The client questionnaire picks one; advisors then tailor it at the block level (re-weight within range, remove a block whose minimum is 0, add a listed block up to its maximum). Each shows its cash / fixed income / equity structure.
-- **Multi-Manager Portfolios** (M101–M105, *UBS CIO Multi-Manager Portfolios*): portfolios made only of third-party SMA models. Managers never see them.
+- **Building Blocks** (B301–B308, *CIO Building Blocks*): ordinary models holding ETFs, modelled on the CIO "Portfolio Building Blocks" design: 1 Cash, 2 Fixed Income (Short Duration), 3 Fixed Income (Intermediate), 4 Fixed Income (Long Duration), 5 High Yield & EM Debt, 6 US Equity, 7 International Equity (Developed + EM), 8 International Developed Equity. Edited on Model Details.
+- **MyWay starting allocations** (W201 Conservative, W202 Moderate, W203 Aggressive SAA): made only of Building Blocks. The client questionnaire picks one; advisors then tailor it at the block level (re-weight within range, remove a block whose minimum is 0, add a listed block up to its maximum). Each shows its cash / fixed income / equity structure.
+- **Multi-Manager Portfolios** (M101–M105, *CIO Multi-Manager Portfolios*): portfolios made only of third-party SMA models. Managers never see them.
 
 Portfolios share the same screens:
 
@@ -61,7 +61,7 @@ Portfolios share the same screens:
 - **Consolidated Holdings**: the look-through model (allocation × weight), with summary tiles, overlap and single-stock 5% filters (funds exempt) and a per-security drill-down.
 - **Automatic updates**: approving an underlying model recalculates and publishes every portfolio that uses it (*Underlying Model Updated* in the audit trail).
 - **Status flows up**: an underlying model that is Rejected or Needs Attention puts the portfolio in Needs Attention, with a link to it.
-- Every underlying model shows where it is used (UBS view only; try `?persona=polen`, where nothing changes).
+- Every underlying model shows where it is used (internal view only; try `?persona=polen`, where nothing changes).
 
 ## After Submit (proposed): impact, delivery, accounts, guardrails, fees
 
@@ -80,7 +80,7 @@ Trade and account data would come from Vestmark; here it is mock.
 
 ## Bulk Upload (proposed)
 
-`#/bulk` (also *Bulk Upload* on the Model List). One workbook, one sheet per model named with its Access code (or one sheet with an Access column). Download the current models for a manager, edit, drop the file back. Every sheet is checked before anything is submitted; problems are fixed in the file or the model is removed from the batch. The 84 *UBS House View* models (H001–H084) are there to exercise it; a sample file with deliberate mistakes loads from the page.
+`#/bulk` (also *Bulk Upload* on the Model List). One workbook, one sheet per model named with its Access code (or one sheet with an Access column). Download the current models for a manager, edit, drop the file back. Every sheet is checked before anything is submitted; problems are fixed in the file or the model is removed from the batch. The 84 *House View* models (H001–H084) are there to exercise it; a sample file with deliberate mistakes loads from the page.
 
 ## Walkthrough
 

@@ -1,7 +1,7 @@
-/* Model Delivery Portal — Portfolios (UBS CIO view)
+/* Model Delivery Portal — Portfolios (CIO view)
  *
- * A portfolio is a UBS CIO parent model made of other models ("sleeves"). Two families:
- *   MyWay Portfolio          made only of UBS Building Blocks (ordinary UBS CIO models). Fixed menu by client profile.
+ * A portfolio is a CIO parent model made of other models ("sleeves"). Two families:
+ *   MyWay Portfolio          made only of Building Blocks (ordinary CIO models). Fixed menu by client profile.
  *   Multi-Manager Portfolio  made only of third-party SMA models. Their managers keep their own model and never see it.
  *
  *   Composition tab           which underlying models and their allocation (must total 100%)
@@ -27,21 +27,21 @@
     }
     var confirmedHere = null, openSec = {};
 
-    var BBM = C.SEED.blockManager, UBSM = C.SEED.ubsManagers;
+    var BBM = C.SEED.blockManager, HOUSEM = C.SEED.houseManagers;
     function blocks() { return C.S.models.filter(function (m) { return m.parent; }); }
     function isBlock(m) { return !!m && m.manager === BBM; }
     /* wording per family */
     function L(b) {
       return b.family === 'myway'
-        ? { one: 'building block', many: 'building blocks', One: 'Building Block', Many: 'Building Blocks', fam: 'MyWay Portfolio', owner: 'UBS CIO must resolve it' }
+        ? { one: 'building block', many: 'building blocks', One: 'Building Block', Many: 'Building Blocks', fam: 'MyWay Portfolio', owner: 'CIO must resolve it' }
         : { one: 'strategy', many: 'strategies', One: 'Strategy', Many: 'Strategies', fam: 'Multi-Manager Portfolio', owner: 'The manager must resolve it' };
     }
-    /* what may go into a portfolio: MyWay = UBS Building Blocks only; Multi-Manager = third-party models only */
+    /* what may go into a portfolio: MyWay = Building Blocks only; Multi-Manager = third-party models only */
     function eligibleWhy(b, m) {
       if (!m) return 'Model not found';
       if (m.parent) return 'A portfolio cannot contain another portfolio';
-      if (b.family === 'myway' && !isBlock(m)) return 'MyWay Portfolios hold UBS Building Blocks only. ' + m.access + ' is a third-party strategy: use a Multi-Manager Portfolio';
-      if (b.family !== 'myway' && UBSM.indexOf(m.manager) > -1) return 'Multi-Manager Portfolios hold third-party strategies only. ' + m.access + ' is a UBS Building Block: use a MyWay Portfolio';
+      if (b.family === 'myway' && !isBlock(m)) return 'MyWay Portfolios hold Building Blocks only. ' + m.access + ' is a third-party strategy: use a Multi-Manager Portfolio';
+      if (b.family !== 'myway' && HOUSEM.indexOf(m.manager) > -1) return 'Multi-Manager Portfolios hold third-party strategies only. ' + m.access + ' is a Building Block: use a MyWay Portfolio';
       if (m.status === 'New') return m.access + ' has no approved model yet';
       return '';
     }
@@ -94,15 +94,15 @@
       return { kind: 'attn', title: 'Needs Attention', sleeve: p.s.access,
         text: w.One + ' ' + p.s.access + (m ? ' (' + m.name + ')' : '') + ': ' + p.i.text.toLowerCase().replace(/^underlying model /, '') + '.' + detail + (probs.length > 1 ? ' ' + (probs.length - 1) + ' more ' + (probs.length > 2 ? w.many : w.one) + ' affected.' : '') + ' ' + w.owner + ', or adjust the allocation.' };
     }
-    /* Shown on an underlying model's page (UBS view only; third-party managers never see the wrapper). */
+    /* Shown on an underlying model's page (internal view only; third-party managers never see the wrapper). */
     function usedIn(m) { return blocks().filter(function (b) { return b.sleeves.some(function (s) { return s.access === m.access; }); }); }
     function memberHtml(m) {
       if (m.parent || !C.isAdmin()) return '';
       var uses = usedIn(m), blk = isBlock(m), fam = blk ? 'MyWay Portfolio' : 'Multi-Manager Portfolio';
-      if (!uses.length) return blk ? '<div class="why why-blk">' + I.info + '<div class="why-t"><b>UBS Building Block</b><span class="why-x">Not used in any MyWay Portfolio yet.</span></div></div>' : '';
-      return '<div class="why why-blk">' + I.info + '<div class="why-t"><b>' + (blk ? 'UBS Building Block &middot; ' : '') + 'Used in ' + (uses.length === 1 ? 'a ' + fam : uses.length + ' ' + fam + 's') + '</b><span class="why-x">' +
+      if (!uses.length) return blk ? '<div class="why why-blk">' + I.info + '<div class="why-t"><b>Building Block</b><span class="why-x">Not used in any MyWay Portfolio yet.</span></div></div>' : '';
+      return '<div class="why why-blk">' + I.info + '<div class="why-t"><b>' + (blk ? 'Building Block &middot; ' : '') + 'Used in ' + (uses.length === 1 ? 'a ' + fam : uses.length + ' ' + fam + 's') + '</b><span class="why-x">' +
         uses.map(function (b) { var s = b.sleeves.filter(function (x) { return x.access === m.access; })[0]; return '<a class="lnk" href="#/model/' + esc(b.access) + '/info/details">' + esc(b.name) + ' (' + esc(b.access) + ')</a> at ' + num(s.alloc, 3) + '%'; }).join(', ') +
-        '. Approved changes to this model update ' + (uses.length === 1 ? 'that portfolio' : 'those portfolios') + ' automatically.' + (blk ? '' : ' <em>UBS view only: the manager does not see this.</em>') + '</span></div></div>';
+        '. Approved changes to this model update ' + (uses.length === 1 ? 'that portfolio' : 'those portfolios') + ' automatically.' + (blk ? '' : ' <em>Internal view only: the manager does not see this.</em>') + '</span></div></div>';
     }
 
     /* ---------------- underlying model approved -> recalculate + auto-publish ---------------- */
@@ -191,7 +191,7 @@
       var opts = C.S.models.filter(function (m) { return !eligibleWhy(b, m); }).map(function (m) { return '<option value="' + esc(m.access) + '">' + esc(m.access + ' · ' + m.name + (mw ? '' : ' · ' + m.manager)) + '</option>'; }).join('');
       c.innerHTML = profileHtml(b) +
         '<div class="md-bar">' +
-          '<div class="add-wrap"><span class="lbl">Add ' + (mw ? 'UBS Building Block' : 'third-party strategy') + ' (Access code or name)</span><div class="add-row"><input id="bb-add" list="bb-list" placeholder="' + (mw ? 'Eg. B305 or International Developed' : 'Eg. N611 or Polen Focus Growth') + '" autocomplete="off"><datalist id="bb-list">' + opts + '</datalist><button class="btn" data-blk="add">Add</button></div></div>' +
+          '<div class="add-wrap"><span class="lbl">Add ' + (mw ? 'Building Block' : 'third-party strategy') + ' (Access code or name)</span><div class="add-row"><input id="bb-add" list="bb-list" placeholder="' + (mw ? 'Eg. B305 or International Developed' : 'Eg. N611 or Polen Focus Growth') + '" autocomplete="off"><datalist id="bb-list">' + opts + '</datalist><button class="btn" data-blk="add">Add</button></div></div>' +
           '<div class="md-actions"><span class="mt">Model Type: ' + w.fam + '</span><button data-blk="scale" id="bb-scale">' + I.refresh + 'Scale To 100%</button></div>' +
         '</div>' +
         '<div class="grid-scroll bb-scroll"><table class="grid bb-grid" id="bb-table"></table></div>' +

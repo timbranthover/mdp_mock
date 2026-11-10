@@ -163,7 +163,7 @@
       ['IJR', 'ISHARES CORE S&P SMALL-CAP ETF', 118.30, '464287804', 0],
       ['EFA', 'ISHARES MSCI EAFE ETF', 92.40, '464287465', 0]
     ],
-    // ETFs used in the UBS CIO building blocks (from the CIO "Portfolio Building Blocks" slide, 11/10/2026)
+    // ETFs used in the CIO building blocks (from the CIO "Portfolio Building Blocks" slide, 11/10/2026)
     bb_etf: [
       ['USFR', 'WISDOMTREE FLOATING RATE TREASURY', 50.31, null, 0],
       ['SCHO', 'SCHWAB SHORT-TERM US TREASURY ETF', 24.38, null, 0],
@@ -312,7 +312,7 @@
       ['LIN', 1.9], ['MSFT', 1.9], ['AVGO', 1.8], ['TMO', 1.6]] },
     N622: { cash: 1.5, rows: [['VTI', 36], ['VXUS', 22], ['BND', 26.5], ['BNDX', 11], ['VGIT', 3]] },
     N621: { cash: 2.0, rows: [['VTI', 24], ['VXUS', 14], ['BND', 40], ['BNDX', 17], ['VGIT', 3]] },
-    /* UBS CIO Building Blocks: holdings exactly as on the CIO "Portfolio Building Blocks" slide (11/10/2026).
+    /* CIO Building Blocks: holdings exactly as on the CIO "Portfolio Building Blocks" slide (11/10/2026).
        Slide weights for blocks 2-4 round to 100.01%; they are scaled to 100% here. Cash residual is 0. */
     B301: { cash: 0, rows: [['USFR', 100]] },
     B302: { cash: 0, rows: [['SCHO', 12.58], ['SCHR', 15.73], ['SPTL', 3.15], ['TIPX', 5.55], ['VMBS', 23], ['USIG', 39.99]] },
@@ -366,7 +366,7 @@
   var M = {
     t12: '12th Street Asset Management', af: 'American Funds Models', bk: 'Blackrock Models',
     cg: 'Capital Group Models', pl: 'Polen Capital Management, LLC', vg: 'Vanguard Models',
-    bb: 'UBS CIO Building Blocks', mw: 'UBS CIO MyWay Portfolios', mm: 'UBS CIO Multi-Manager Portfolios', hv: 'UBS House View'
+    bb: 'CIO Building Blocks', mw: 'CIO MyWay Portfolios', mm: 'CIO Multi-Manager Portfolios', hv: 'House View'
   };
   var DEFS = [
     [M.t12, '12th Street Tactical Multi-Asset - Bal', 'N601', '', 'Dynamic', 192, 84.16, 'multi', 'In Progress', '2026-10-27 12:19:17.500213', 'qa', '2026-10-08 14:09:00', 'qa'],
@@ -397,14 +397,14 @@
     [M.cg, 'Capital Group U.S. Equity SMA', 'N541', '', 'Static', 388, 142.61, 'capgroup', 'Approved', '2026-10-23 15:41:07.218843', 'ho', '2026-10-01 10:20:00', 'qa'],
     [M.t12, '12th Street US Dividend Value', 'N602', '', 'Static', 247, 58.33, 'multi', 'Approved', '2026-10-22 11:36:52.604119', 'qa', '2026-10-06 13:05:00', 'qa'],
     /* Names follow the slide. Blocks 2-4 hold the same ETFs at different maturities (short / intermediate / long). */
-    [M.bb, 'UBS Building Block 1 - Cash', 'B301', '', 'Static', 0, 0.00, 'ubsblock', 'Approved', '2026-10-20 10:14:02.551873', 'admin', '2026-10-20 10:30:00', 'admin'],
-    [M.bb, 'UBS Building Block 2 - Fixed Income (Short Duration)', 'B302', '', 'Static', 0, 0.00, 'ubsblock', 'Approved', '2026-10-28 14:22:47.093318', 'admin', '2026-10-28 15:00:00', 'admin'],
-    [M.bb, 'UBS Building Block 3 - Fixed Income (Intermediate)', 'B303', '', 'Static', 0, 0.00, 'ubsblock', 'Approved', '2026-10-28 14:25:11.402187', 'admin', '2026-10-28 15:00:00', 'admin'],
-    [M.bb, 'UBS Building Block 4 - Fixed Income (Long Duration)', 'B304', '', 'Static', 0, 0.00, 'ubsblock', 'Approved', '2026-10-28 14:27:36.880413', 'admin', '2026-10-28 15:00:00', 'admin'],
-    [M.bb, 'UBS Building Block 5 - High Yield & EM Debt', 'B305', '', 'Static', 0, 0.00, 'ubsblock', 'In Progress', '2026-11-02 09:41:18.204611', 'dr', '2026-10-21 11:15:00', 'admin'],
-    [M.bb, 'UBS Building Block 6 - US Equity', 'B306', '', 'Static', 0, 0.00, 'ubsblock', 'Approved', '2026-10-29 16:37:09.448215', 'admin', '2026-10-30 09:20:00', 'admin'],
-    [M.bb, 'UBS Building Block 7 - International Equity (Developed + EM)', 'B307', '', 'Static', 0, 0.00, 'ubsblock', 'Approved', '2026-10-27 13:48:20.305571', 'admin', '2026-10-27 14:10:00', 'admin'],
-    [M.bb, 'UBS Building Block 8 - International Developed Equity', 'B308', '', 'Static', 0, 0.00, 'ubsblock', 'Approved', '2026-10-27 13:51:44.817264', 'admin', null, null],
+    [M.bb, 'Building Block 1 - Cash', 'B301', '', 'Static', 0, 0.00, 'cioblock', 'Approved', '2026-10-20 10:14:02.551873', 'admin', '2026-10-20 10:30:00', 'admin'],
+    [M.bb, 'Building Block 2 - Fixed Income (Short Duration)', 'B302', '', 'Static', 0, 0.00, 'cioblock', 'Approved', '2026-10-28 14:22:47.093318', 'admin', '2026-10-28 15:00:00', 'admin'],
+    [M.bb, 'Building Block 3 - Fixed Income (Intermediate)', 'B303', '', 'Static', 0, 0.00, 'cioblock', 'Approved', '2026-10-28 14:25:11.402187', 'admin', '2026-10-28 15:00:00', 'admin'],
+    [M.bb, 'Building Block 4 - Fixed Income (Long Duration)', 'B304', '', 'Static', 0, 0.00, 'cioblock', 'Approved', '2026-10-28 14:27:36.880413', 'admin', '2026-10-28 15:00:00', 'admin'],
+    [M.bb, 'Building Block 5 - High Yield & EM Debt', 'B305', '', 'Static', 0, 0.00, 'cioblock', 'In Progress', '2026-11-02 09:41:18.204611', 'dr', '2026-10-21 11:15:00', 'admin'],
+    [M.bb, 'Building Block 6 - US Equity', 'B306', '', 'Static', 0, 0.00, 'cioblock', 'Approved', '2026-10-29 16:37:09.448215', 'admin', '2026-10-30 09:20:00', 'admin'],
+    [M.bb, 'Building Block 7 - International Equity (Developed + EM)', 'B307', '', 'Static', 0, 0.00, 'cioblock', 'Approved', '2026-10-27 13:48:20.305571', 'admin', '2026-10-27 14:10:00', 'admin'],
+    [M.bb, 'Building Block 8 - International Developed Equity', 'B308', '', 'Static', 0, 0.00, 'cioblock', 'Approved', '2026-10-27 13:51:44.817264', 'admin', null, null],
     [M.pl, 'Polen Focus Growth Equity', 'N611', '', 'Static', 1204, 312.55, 'polen', 'Approved', '2026-10-21 14:02:11.903301', 'qa', '2026-10-21 14:30:00', 'qa'],
     [M.pl, 'Polen Global Growth', 'N612', '', 'Static', 344, 96.02, 'polen', 'Needs Attention', '2026-10-21 11:04:56.393805', 'sys', '2026-10-03 10:12:00', 'qa'],
     [M.pl, 'Polen Small Company Growth', 'N613', '', 'Static', 61, 12.84, 'polen', 'Rejected', '2026-10-24 11:27:05.664912', 'admin', null, null],
@@ -418,17 +418,17 @@
 
   /* ---------- profile users (fictional) ---------- */
   var PROFILE_USERS = {};
-  PROFILE_USERS[M.t12] = [['Hollis, Grant', 'mdp.ext.ghollis@ubs.com', '212-555-0141'], ['Ostrowski, Lena', 'mdp.ext.lostrowski@ubs.com', '']];
-  PROFILE_USERS[M.af] = [['Calder, Marisa', 'mdp.ext.mcalder@ubs.com', '213-555-0162'], ['Byrne, Owen', 'mdp.ext.obyrne@ubs.com', '213-555-0188'], ['Tanaka, Rui', 'mdp.ext.rtanaka@ubs.com', '']];
-  PROFILE_USERS[M.bk] = [['Hale, Arthur', 'mdp.qa.user01@ubs.com', '9082346444'], ['Woodley, Angela', 'mdp.qa.user01@ubs.com', '908-333-8888'], ['Novak, Irina', 'mdp.qa.user02@ubs.com', '777-777-7777']];
-  PROFILE_USERS[M.cg] = [['Prescott, Elena', 'mdp.ext.eprescott@ubs.com', '415-555-0110'], ['Moreau, Julien', 'mdp.ext.jmoreau@ubs.com', '']];
-  PROFILE_USERS[M.pl] = [['Kessler, Anya', 'mdp.ext.akessler@ubs.com', '561-555-0173'], ['Duarte, Sam', 'mdp.ext.sduarte@ubs.com', '']];
-  PROFILE_USERS[M.vg] = [['Whitfield, Cole', 'mdp.ext.cwhitfield@ubs.com', '610-555-0129'], ['Iyer, Priya', 'mdp.ext.piyer@ubs.com', '610-555-0155']];
-  var SHARED_USERS = [['Turner, Alla', 'mdp.qa.user01@ubs.com', ''], ['MDC, ART', 'mdp.qa.user03@ubs.com', ''], ['MDC, ART', 'testfailbounceback@example.com', ''], ['QASIT, ICSTOMMQA', 'mdp.qa.user03@ubs.com', ''], ['Test, ICSTOMMC', '', '']];
+  PROFILE_USERS[M.t12] = [['Hollis, Grant', 'mdp.ext.ghollis@example.com', '212-555-0141'], ['Ostrowski, Lena', 'mdp.ext.lostrowski@example.com', '']];
+  PROFILE_USERS[M.af] = [['Calder, Marisa', 'mdp.ext.mcalder@example.com', '213-555-0162'], ['Byrne, Owen', 'mdp.ext.obyrne@example.com', '213-555-0188'], ['Tanaka, Rui', 'mdp.ext.rtanaka@example.com', '']];
+  PROFILE_USERS[M.bk] = [['Hale, Arthur', 'mdp.qa.user01@example.com', '9082346444'], ['Woodley, Angela', 'mdp.qa.user01@example.com', '908-333-8888'], ['Novak, Irina', 'mdp.qa.user02@example.com', '777-777-7777']];
+  PROFILE_USERS[M.cg] = [['Prescott, Elena', 'mdp.ext.eprescott@example.com', '415-555-0110'], ['Moreau, Julien', 'mdp.ext.jmoreau@example.com', '']];
+  PROFILE_USERS[M.pl] = [['Kessler, Anya', 'mdp.ext.akessler@example.com', '561-555-0173'], ['Duarte, Sam', 'mdp.ext.sduarte@example.com', '']];
+  PROFILE_USERS[M.vg] = [['Whitfield, Cole', 'mdp.ext.cwhitfield@example.com', '610-555-0129'], ['Iyer, Priya', 'mdp.ext.piyer@example.com', '610-555-0155']];
+  var SHARED_USERS = [['Turner, Alla', 'mdp.qa.user01@example.com', ''], ['MDC, ART', 'mdp.qa.user03@example.com', ''], ['MDC, ART', 'testfailbounceback@example.com', ''], ['QASIT, ICSTOMMQA', 'mdp.qa.user03@example.com', ''], ['Test, ICSTOMMC', '', '']];
 
-  PROFILE_USERS[M.bb] = [['CIO Portfolio Construction', 'cio.blocks.qa@ubs.com', '']];
-  PROFILE_USERS[M.hv] = [['House View Model Team', 'hv.models.qa@ubs.com', '']];
-  var MINIMUMS = { 'houseview': '$50,000', 'ubsblock': '$25,000', 'multi': '$25,000', 'afunds': '$25,000', 'bktax': '$10,000', 'bkcore': '$10,000', 'ucits': '$50,000', 'capgroup': '$10,000', 'polen': '$100,000', 'vanguard': '$10,000' };
+  PROFILE_USERS[M.bb] = [['CIO Portfolio Construction', 'cio.blocks.qa@example.com', '']];
+  PROFILE_USERS[M.hv] = [['House View Model Team', 'hv.models.qa@example.com', '']];
+  var MINIMUMS = { 'houseview': '$50,000', 'cioblock': '$25,000', 'multi': '$25,000', 'afunds': '$25,000', 'bktax': '$10,000', 'bkcore': '$10,000', 'ucits': '$50,000', 'capgroup': '$10,000', 'polen': '$100,000', 'vanguard': '$10,000' };
 
   /* ---------- snapshots & events ---------- */
   function jitter(rows, seed) {
@@ -502,7 +502,7 @@
     return ev;
   }
 
-  /* ---------- UBS House View: 84 flat asset-allocation models (7 risk levels x 2 tax x 2 region x 3 styles) ----------
+  /* ---------- House View: 84 flat asset-allocation models (7 risk levels x 2 tax x 2 region x 3 styles) ----------
    * Maintained by one team, usually all at once (quarterly), which is what Bulk Upload is for.
    */
   var HV_RISK = [['Fixed Income', 0], ['Conservative', 20], ['Moderately Conservative', 35], ['Moderate', 50], ['Moderately Aggressive', 65], ['Aggressive', 80], ['Equity', 100]];
@@ -542,8 +542,8 @@
 
   /* ---------- attributes used by the downstream views ---------- */
   var TAX_MANAGED = { N529: 1, N527: 1, N526: 1, N528: 1, N536: 1, N624: 1 };
-  /* Manager fee in basis points (illustrative mock rates). UBS-managed models carry no third-party manager fee. */
-  var FEE_BPS = { polen: 34, capgroup: 8, multi: 28, bktax: 12, bkcore: 10, vanguard: 6, afunds: 0, ucits: 14, ubsblock: 0, houseview: 0, portfolio: 0 };
+  /* Manager fee in basis points (illustrative mock rates). In-house models carry no third-party manager fee. */
+  var FEE_BPS = { polen: 34, capgroup: 8, multi: 28, bktax: 12, bkcore: 10, vanguard: 6, afunds: 0, ucits: 14, cioblock: 0, houseview: 0, portfolio: 0 };
   var FEE_OVERRIDE = { N533: 30, N541: 30, N602: 29, N612: 36, N613: 42 };
   /* Extra, deliberate history so cross-sleeve checks have something real to find:
    * one sleeve reduces a security that another sleeve of the same portfolio adds within 30 days. [day, [[ticker, delta]]] */
@@ -641,8 +641,8 @@
   }
 
   /* ---------- Portfolios (parent models made of other models) ----------
-   * MyWay Portfolio:          UBS CIO portfolio made only of UBS Building Blocks (fixed menu, by client profile).
-   * Multi-Manager Portfolio:  UBS CIO portfolio made only of third-party SMA models. Their managers never see it.
+   * MyWay Portfolio:          CIO portfolio made only of Building Blocks (fixed menu, by client profile).
+   * Multi-Manager Portfolio:  CIO portfolio made only of third-party SMA models. Their managers never see it.
    * A portfolio owns only its allocation across underlying models ("sleeves"). Its holdings are the consolidated
    * look-through model: SUM(sleeve allocation x security weight in that sleeve). One level only.
    */
@@ -688,7 +688,7 @@
     ['W201', 'myway', 'MyWay Conservative SAA', 642, 233.48, [['B301', 2], ['B302', 83], ['B306', 11], ['B308', 4]], '2026-10-01 09:10:12.201554', '2026-10-28 15:20:41.118306', '2026-10-28 16:00:00.302118', ['Conservative']],
     ['W202', 'myway', 'MyWay Moderate SAA', 1318, 512.76, [['B301', 2], ['B303', 38.4], ['B305', 9.6], ['B306', 33], ['B307', 17]], '2026-10-01 09:14:55.873310', '2026-10-28 15:22:09.551870', '2026-10-28 16:05:00.110482', ['Moderate']],
     ['W203', 'myway', 'MyWay Aggressive SAA', 704, 301.15, [['B301', 2], ['B304', 13], ['B306', 56.1], ['B307', 28.9]], '2026-10-02 10:31:40.664120', '2026-10-29 17:02:15.904553', null, ['Aggressive']],
-    /* Multi-Manager: UBS allocation across third-party SMAs */
+    /* Multi-Manager: In-house allocation across third-party SMAs */
     ['M101', 'mm', 'Multi-Manager US Equity Portfolio', 214, 61.42, [['N611', 35], ['N541', 40], ['N602', 25]], '2026-10-01 09:12:44.210331', '2026-10-15 10:02:18.553201', '2026-10-15 10:30:00.118204'],
     ['M102', 'mm', 'Multi-Manager Global Multi-Asset Portfolio', 96, 28.75, [['N533', 25], ['N622', 25], ['N612', 20], ['N529', 15], ['N541', 15]], '2026-10-02 14:31:05.118842', '2026-10-09 11:46:30.774410', null],
     ['M103', 'mm', 'Multi-Manager Global Equity Portfolio', 158, 47.90, [['N533', 40], ['N612', 35], ['N541', 25]], '2026-10-05 10:44:12.903217', '2026-10-19 14:12:51.330942', '2026-10-20 09:05:00.441093'],
@@ -705,7 +705,7 @@
         status: 'Approved', modified: d[7], modifiedUser: MDP_USERS.admin, confirmed: d[8] || null, confirmedUser: d[8] ? MDP_USERS.admin : null,
         minimum: d[1] === 'myway' ? '$100,000' : '$250,000', emails: '', tlh: '', pending: null, communications: [],
         sleeves: d[5].map(function (x) { return { access: x[0], alloc: x[1] }; }),
-        users: [['MDC, ART', 'mdp.qa.user03@ubs.com', ''], ['CIO Portfolio Construction', 'cio.blocks.qa@ubs.com', '']]
+        users: [['MDC, ART', 'mdp.qa.user03@example.com', ''], ['CIO Portfolio Construction', 'cio.blocks.qa@example.com', '']]
       };
       p.holdings = consolidate(p.sleeves, by).holdings;
       if (d[1] === 'myway') {
@@ -737,7 +737,7 @@
       p.events = ev;
       return p;
     });
-    // AUM / accounts of a UBS Building Block = what flows into it from the MyWay Portfolios that use it
+    // AUM / accounts of a Building Block = what flows into it from the MyWay Portfolios that use it
     models.forEach(function (m) {
       if (m.manager !== M.bb) return;
       var aum = 0, acc = 0;
@@ -748,10 +748,10 @@
   }
 
   window.MDP_SEED = {
-    version: 10,
+    version: 11,
     managers: [M.bk, M.af, M.pl, M.cg, M.vg, M.t12, M.bb, M.mw, M.mm, M.hv], // order used in the Model List header
     managerOptions: [M.t12, M.af, M.bk, M.cg, M.pl, M.vg, M.bb, M.mw, M.mm, M.hv], // order used in the Manager filter
-    ubsManagers: [M.bb, M.mw, M.mm, M.hv],
+    houseManagers: [M.bb, M.mw, M.mm, M.hv],
     blockClass: BLOCK_CLASS,
     houseViewManager: M.hv,
     overlayBps: 4, // model-delivery overlay fee, illustrative
