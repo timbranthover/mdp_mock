@@ -163,6 +163,23 @@
       ['IJR', 'ISHARES CORE S&P SMALL-CAP ETF', 118.30, '464287804', 0],
       ['EFA', 'ISHARES MSCI EAFE ETF', 92.40, '464287465', 0]
     ],
+    // ETFs used in the UBS CIO building blocks (from the CIO "Portfolio Building Blocks" slide, 11/10/2026)
+    bb_etf: [
+      ['USFR', 'WISDOMTREE FLOATING RATE TREASURY', 50.31, null, 0],
+      ['SCHO', 'SCHWAB SHORT-TERM US TREASURY ETF', 24.38, null, 0],
+      ['SCHR', 'SCHWAB INTERMEDIATE-TERM US TREASURY', 25.02, null, 0],
+      ['SPTL', 'SPDR PORTFOLIO LONG TERM TREASURY', 27.15, null, 0],
+      ['TIPX', 'SPDR BBG 1-10 YEAR TIPS ETF', 19.40, null, 0],
+      ['VMBS', 'VANGUARD MORTGAGE-BACKED SECS ETF', 46.22, null, 0],
+      ['USIG', 'ISHARES BROAD USD INV GRADE CORP BD', 51.08, null, 0],
+      ['SPHY', 'SPDR PORTFOLIO HIGH YIELD BOND ETF', 23.71, null, 0],
+      ['VWOB', 'VANGUARD EM GOVT BOND ETF', 66.40, null, 0],
+      ['EMLC', 'VANECK JPM EM LOCAL CURRENCY BD ETF', 25.36, null, 0],
+      ['VUG', 'VANGUARD GROWTH ETF', 452.10, null, 0],
+      ['VTV', 'VANGUARD VALUE ETF', 182.64, null, 0],
+      ['SPMD', 'SPDR PORTFOLIO S&P 400 MID CAP ETF', 57.93, null, 0],
+      ['SPSM', 'SPDR PORTFOLIO S&P 600 SM CAP ETF', 46.85, null, 0]
+    ],
     other_etf: [
       ['SPY', 'SPDR S&P 500 ETF TRUST', 682.10, '78462F103', 0],
       ['GLD', 'SPDR GOLD SHARES', 381.20, '78463V107', 1],
@@ -295,21 +312,16 @@
       ['LIN', 1.9], ['MSFT', 1.9], ['AVGO', 1.8], ['TMO', 1.6]] },
     N622: { cash: 1.5, rows: [['VTI', 36], ['VXUS', 22], ['BND', 26.5], ['BNDX', 11], ['VGIT', 3]] },
     N621: { cash: 2.0, rows: [['VTI', 24], ['VXUS', 14], ['BND', 40], ['BNDX', 17], ['VGIT', 3]] },
-    /* UBS CIO Building Blocks (illustrative): each looks like a single third-party SMA */
-    B301: { cash: 1.5, rows: [['NVDA', 8], ['MSFT', 8], ['AAPL', 7], ['AMZN', 6], ['GOOG', 5.5], ['META', 5], ['AVGO', 5], ['LLY', 4], ['V', 3.6], ['MA', 3.2], ['NFLX', 3], ['NOW', 3], ['ORCL', 2.8],
-      ['COST', 2.6], ['ISRG', 2.4], ['UBER', 2.2], ['AMD', 2.2], ['ADBE', 2], ['CDNS', 2], ['KLAC', 2], ['SPGI', 1.8], ['ABNB', 1.6], ['ORLY', 1.6], ['IDXX', 1.4], ['CSGP', 1.2]] },
-    B302: { cash: 2.0, rows: [['JPM', 5], ['BRK/B', 5], ['XOM', 4.5], ['JNJ', 4.2], ['UNH', 3.8], ['CVX', 3.4], ['PG', 3.4], ['WMT', 3.2], ['HD', 3], ['ABBV', 3], ['CSCO', 3], ['GS', 2.8], ['MRK', 2.8],
-      ['CAT', 2.6], ['RTX', 2.5], ['KO', 2.4], ['PEP', 2.4], ['HON', 2.3], ['TMO', 2.3], ['LIN', 2.2], ['NEE', 2.2], ['UNP', 2.1], ['VZ', 2], ['LMT', 2], ['TXN', 2], ['MCD', 2], ['SO', 1.8], ['PM', 1.8], ['CEG', 1.6]] },
-    B303: { cash: 1.0, rows: [['MSFT', 6.5], ['NVDA', 6], ['AAPL', 6], ['AMZN', 4.2], ['GOOG', 4], ['META', 3], ['AVGO', 2.6], ['BRK/B', 2.2], ['JPM', 2.2], ['LLY', 2], ['V', 1.8], ['XOM', 1.5], ['UNH', 1.4], ['MA', 1.4],
-      ['COST', 1.3], ['HD', 1.3], ['PG', 1.3], ['JNJ', 1.3], ['ABBV', 1.2], ['WMT', 1.2], ['NFLX', 1.1], ['ORCL', 1.1], ['CSCO', 1], ['KO', 1], ['MRK', 1], ['PEP', 1], ['CVX', 1], ['GE', 1], ['CAT', 1],
-      ['LIN', 0.9], ['TMO', 0.9], ['ISRG', 0.9], ['SPGI', 0.9], ['RTX', 0.9], ['NOW', 0.9], ['GS', 0.9], ['UNP', 0.8], ['HON', 0.8], ['NEE', 0.8], ['TXN', 0.8], ['AMD', 0.8]] },
-    B304: { cash: 2.5, rows: [['JPM', 4.6], ['JNJ', 4.4], ['XOM', 4.2], ['PG', 4], ['ABBV', 4], ['CVX', 3.8], ['KO', 3.6], ['PEP', 3.6], ['MRK', 3.4], ['HD', 3.4], ['CSCO', 3.2], ['VZ', 3.2], ['PM', 3.2], ['MCD', 3],
-      ['TXN', 3], ['NEE', 3], ['SO', 3], ['LMT', 2.8], ['HON', 2.8], ['UNP', 2.6], ['RTX', 2.6], ['MSFT', 2.6], ['AVGO', 2.6], ['WMT', 2.4], ['LIN', 2.2], ['GS', 2.2], ['CAT', 2.2]] },
-    B305: { cash: 2.5, rows: [['ASML', 6], ['SAP', 5.4], ['NVO', 5], ['AZN', 5], ['NSRGY', 4.6], ['LVMUY', 4.2], ['SONY', 4.2], ['TM', 4.2], ['SAFRY', 4], ['RELX', 4], ['HSBC', 3.8], ['SHEL', 3.8], ['UL', 3.6],
-      ['RYCEY', 3.6], ['HESAY', 3.6], ['MUFG', 3.4], ['LRLCY', 3.4], ['AAGIY', 3.4], ['SNY', 3.2], ['TOELY', 3.2], ['SHOP', 3]] },
-    B306: { cash: 3.0, rows: [['IEMG', 25], ['TSM', 12], ['TCEHY', 9], ['HDB', 6], ['BABA', 6], ['MELI', 5.5], ['IBN', 5], ['INFY', 4.5], ['ITUB', 4], ['NU', 4], ['PDD', 4], ['VALE', 3.5], ['PBR', 3]] },
-    B307: { cash: 2.0, rows: [['AGG', 30], ['IUSB', 20], ['LQD', 15], ['TIP', 10], ['SHY', 10], ['MINT', 7], ['TLT', 6]] },
-    B308: { cash: 2.0, rows: [['MUB', 40], ['VTEB', 30], ['CGMU', 18], ['CGHM', 10]] },
+    /* UBS CIO Building Blocks: holdings exactly as on the CIO "Portfolio Building Blocks" slide (11/10/2026).
+       Slide weights for blocks 2-4 round to 100.01%; they are scaled to 100% here. Cash residual is 0. */
+    B301: { cash: 0, rows: [['USFR', 100]] },
+    B302: { cash: 0, rows: [['SCHO', 12.58], ['SCHR', 15.73], ['SPTL', 3.15], ['TIPX', 5.55], ['VMBS', 23], ['USIG', 40]] },
+    B303: { cash: 0, rows: [['SCHO', 4.72], ['SCHR', 17.30], ['SPTL', 9.44], ['TIPX', 5.55], ['VMBS', 23], ['USIG', 40]] },
+    B304: { cash: 0, rows: [['SCHO', 3.15], ['SCHR', 12.58], ['SPTL', 15.73], ['TIPX', 5.55], ['VMBS', 23], ['USIG', 40]] },
+    B305: { cash: 0, rows: [['SPHY', 50], ['VWOB', 33.33], ['EMLC', 16.67]] },
+    B306: { cash: 0, rows: [['VUG', 35], ['VTV', 35], ['SPMD', 20], ['SPSM', 10]] },
+    B307: { cash: 0, rows: [['IEFA', 70], ['IEMG', 30]] },
+    B308: { cash: 0, rows: [['IEFA', 100]] },
     N534: { cash: 2.8, rows: [['CGCP', 37], ['CGSD', 20], ['CGMU', 14], ['CGDV', 12], ['CGUS', 9], ['CGIE', 5.2]] }
   };
   function buildHoldings(model) {
@@ -384,14 +396,15 @@
     [M.cg, 'Capital Group Multi-Sector Income', 'N530', 'Z9NT', 'Static', 87, 29.18, 'capgroup', 'In Progress', '2026-10-27 17:22:40.019876', 'admin', null, null],
     [M.cg, 'Capital Group U.S. Equity SMA', 'N541', '', 'Static', 388, 142.61, 'capgroup', 'Approved', '2026-10-23 15:41:07.218843', 'ho', '2026-10-01 10:20:00', 'qa'],
     [M.t12, '12th Street US Dividend Value', 'N602', '', 'Static', 247, 58.33, 'multi', 'Approved', '2026-10-22 11:36:52.604119', 'qa', '2026-10-06 13:05:00', 'qa'],
-    [M.bb, 'UBS US Large Cap Growth Block', 'B301', '', 'Static', 0, 0.00, 'ubsblock', 'Approved', '2026-10-27 10:14:02.551873', 'admin', '2026-10-27 10:30:00', 'admin'],
-    [M.bb, 'UBS US Large Cap Value Block', 'B302', '', 'Static', 0, 0.00, 'ubsblock', 'In Progress', '2026-11-02 09:41:18.204611', 'dr', '2026-10-20 11:15:00', 'admin'],
-    [M.bb, 'UBS US Tax-Aware Core Block', 'B303', '', 'Static', 0, 0.00, 'ubsblock', 'Approved', '2026-10-28 14:22:47.093318', 'admin', '2026-10-28 15:00:00', 'admin'],
-    [M.bb, 'UBS US Dividend Income Block', 'B304', '', 'Static', 0, 0.00, 'ubsblock', 'Approved', '2026-10-26 11:05:31.770142', 'admin', null, null],
-    [M.bb, 'UBS International Developed ADR Block', 'B305', '', 'Static', 0, 0.00, 'ubsblock', 'Approved', '2026-10-29 16:37:09.448215', 'admin', '2026-10-30 09:20:00', 'admin'],
-    [M.bb, 'UBS Emerging Markets ADR Block', 'B306', '', 'Static', 0, 0.00, 'ubsblock', 'Needs Attention', '2026-10-30 07:12:55.618802', 'sys', '2026-10-16 10:05:00', 'admin'],
-    [M.bb, 'UBS Core Fixed Income Block', 'B307', '', 'Static', 0, 0.00, 'ubsblock', 'Approved', '2026-10-13 13:48:20.305571', 'admin', '2026-10-13 14:10:00', 'admin'],
-    [M.bb, 'UBS Municipal Income Block', 'B308', '', 'Static', 0, 0.00, 'ubsblock', 'Approved', '2026-10-28 10:03:44.817264', 'admin', '2026-10-28 10:30:00', 'admin'],
+    /* Names follow the slide. Blocks 2-4 hold the same ETFs at different maturities (short / intermediate / long). */
+    [M.bb, 'UBS Building Block 1 - Cash', 'B301', '', 'Static', 0, 0.00, 'ubsblock', 'Approved', '2026-10-20 10:14:02.551873', 'admin', '2026-10-20 10:30:00', 'admin'],
+    [M.bb, 'UBS Building Block 2 - Fixed Income (Short Duration)', 'B302', '', 'Static', 0, 0.00, 'ubsblock', 'Approved', '2026-10-28 14:22:47.093318', 'admin', '2026-10-28 15:00:00', 'admin'],
+    [M.bb, 'UBS Building Block 3 - Fixed Income (Intermediate)', 'B303', '', 'Static', 0, 0.00, 'ubsblock', 'Approved', '2026-10-28 14:25:11.402187', 'admin', '2026-10-28 15:00:00', 'admin'],
+    [M.bb, 'UBS Building Block 4 - Fixed Income (Long Duration)', 'B304', '', 'Static', 0, 0.00, 'ubsblock', 'Approved', '2026-10-28 14:27:36.880413', 'admin', '2026-10-28 15:00:00', 'admin'],
+    [M.bb, 'UBS Building Block 5 - High Yield & EM Debt', 'B305', '', 'Static', 0, 0.00, 'ubsblock', 'In Progress', '2026-11-02 09:41:18.204611', 'dr', '2026-10-21 11:15:00', 'admin'],
+    [M.bb, 'UBS Building Block 6 - US Equity', 'B306', '', 'Static', 0, 0.00, 'ubsblock', 'Approved', '2026-10-29 16:37:09.448215', 'admin', '2026-10-30 09:20:00', 'admin'],
+    [M.bb, 'UBS Building Block 7 - International Equity (Developed + EM)', 'B307', '', 'Static', 0, 0.00, 'ubsblock', 'Approved', '2026-10-27 13:48:20.305571', 'admin', '2026-10-27 14:10:00', 'admin'],
+    [M.bb, 'UBS Building Block 8 - International Developed Equity', 'B308', '', 'Static', 0, 0.00, 'ubsblock', 'Approved', '2026-10-27 13:51:44.817264', 'admin', null, null],
     [M.pl, 'Polen Focus Growth Equity', 'N611', '', 'Static', 1204, 312.55, 'polen', 'Approved', '2026-10-21 14:02:11.903301', 'qa', '2026-10-21 14:30:00', 'qa'],
     [M.pl, 'Polen Global Growth', 'N612', '', 'Static', 344, 96.02, 'polen', 'Needs Attention', '2026-10-21 11:04:56.393805', 'sys', '2026-10-03 10:12:00', 'qa'],
     [M.pl, 'Polen Small Company Growth', 'N613', '', 'Static', 61, 12.84, 'polen', 'Rejected', '2026-10-24 11:27:05.664912', 'admin', null, null],
@@ -528,23 +541,23 @@
   })();
 
   /* ---------- attributes used by the downstream views ---------- */
-  var TAX_MANAGED = { B303: 1, B308: 1, N529: 1, N527: 1, N526: 1, N528: 1, N536: 1, N624: 1 };
+  var TAX_MANAGED = { N529: 1, N527: 1, N526: 1, N528: 1, N536: 1, N624: 1 };
   /* Manager fee in basis points (illustrative mock rates). UBS-managed models carry no third-party manager fee. */
   var FEE_BPS = { polen: 34, capgroup: 8, multi: 28, bktax: 12, bkcore: 10, vanguard: 6, afunds: 0, ucits: 14, ubsblock: 0, houseview: 0, portfolio: 0 };
   var FEE_OVERRIDE = { N533: 30, N541: 30, N602: 29, N612: 36, N613: 42 };
   /* Extra, deliberate history so cross-sleeve checks have something real to find:
    * one sleeve reduces a security that another sleeve of the same portfolio adds within 30 days. [day, [[ticker, delta]]] */
   var EXTRA_HISTORY = {
-    B301: [['2026-10-22', [['ORCL', -0.6], ['NOW', 0.6]]]],
-    B303: [['2026-10-20', [['ORCL', 0.3], ['CSCO', -0.3]]]],
-    B304: [['2026-10-23', [['MSFT', 0.4], ['VZ', -0.4]]]],
+    B303: [['2026-10-22', [['SPTL', 0.5], ['SCHO', -0.5]]]],
+    B304: [['2026-10-20', [['SPTL', -0.4], ['SCHR', 0.4]]]],
     N612: [['2026-10-14', [['META', -0.5], ['SAP', 0.5]]]],
     N611: [['2026-10-19', [['META', 0.45], ['SBUX', -0.45]]]],
     N541: [['2026-10-15', [['ORCL', -0.4], ['MU', 0.4]]]]
   };
-  /* Advisor guardrails for MyWay portfolios: default band around the target, and approved swaps between like-for-like blocks. */
-  var SWAPS = { B302: ['B304'], B304: ['B302'], B307: ['B308'], B308: ['B307'], B306: ['B305'] };
-  function defaultBand(t) { var b = t >= 30 ? 5 : t >= 15 ? 4 : 3; return { min: Math.max(0, t - b), max: Math.min(100, t + b) }; }
+  /* Asset class of each building block (drives the Structure view and the risk health check) */
+  var BLOCK_CLASS = { B301: 'Cash', B302: 'Fixed Income', B303: 'Fixed Income', B304: 'Fixed Income', B305: 'Fixed Income', B306: 'Equity', B307: 'Equity', B308: 'Equity' };
+  /* Range used when a block is added to a starting allocation that has no range for it yet */
+  function defaultBand(t) { return { min: 0, max: Math.min(100, Math.max(10, Math.round(t * 1.6))) }; }
 
   /* ---------- keep the mock calendar current ----------
    * Seed dates are written around late Oct / early Nov 2026. They are moved forward by a whole number of BUSINESS
@@ -649,19 +662,30 @@
       .sort(function (a, b) { return a.ticker < b.ticker ? -1 : 1; });
     var used = rows.reduce(function (a, r) { return a + r.weight; }, 0);
     var allocTot = sleeves.reduce(function (a, s) { return a + (byAccess[s.access] ? (+s.alloc || 0) : 0); }, 0);
-    rows.unshift({ ticker: 'USD Cash', weight: +(allocTot - used).toFixed(3) });
+    var resid = +(allocTot - used).toFixed(3);
+    if (resid < 0 && resid > -0.01 && rows.length) { var big = rows.reduce(function (x, r) { return r.weight > x.weight ? r : x; }, rows[0]); big.weight = +(big.weight + resid).toFixed(3); resid = 0; } // rounding only
+    rows.unshift({ ticker: 'USD Cash', weight: resid });
     return { holdings: rows, contrib: contrib };
   }
+  /* Advisor tailoring rules per starting allocation. range: [min, max] for each block in the SAA (min 0 = may be removed);
+     adds: blocks that may be added and their max; health: portfolio-level checks applied to every tailored account. */
+  var TAILOR = {
+    W201: { range: { B301: [0, 10], B302: [50, 95], B306: [0, 30], B308: [0, 15] }, adds: { B303: 30, B305: 10, B307: 15 },
+            health: { eqMin: 0, eqMax: 30, cashMin: 1, cashMax: 10, maxBlock: 90, minBlocks: 3 } },
+    W202: { range: { B301: [0, 10], B303: [20, 60], B305: [0, 20], B306: [15, 50], B307: [0, 30] }, adds: { B302: 30, B304: 30, B308: 20 },
+            health: { eqMin: 35, eqMax: 65, cashMin: 1, cashMax: 10, maxBlock: 60, minBlocks: 3 } },
+    W203: { range: { B301: [0, 10], B304: [0, 30], B306: [35, 75], B307: [10, 45] }, adds: { B303: 20, B305: 15, B308: 25 },
+            health: { eqMin: 70, eqMax: 95, cashMin: 1, cashMax: 10, maxBlock: 75, minBlocks: 3 } }
+  };
   var FAMILY = { myway: { manager: M.mw, label: 'MyWay Portfolio' }, mm: { manager: M.mm, label: 'Multi-Manager Portfolio' } };
   // [access, family, name, accounts, AUM(M), sleeves [[access, alloc]], created, last update, confirmed|null, profile [region, tax, objective]]
   var PORTFOLIO_DEFS = [
-    /* MyWay: a fixed menu covering the main client profiles (region x tax treatment x objective) */
-    ['W201', 'myway', 'MyWay US Equity Growth', 486, 172.30, [['B301', 45], ['B303', 35], ['B302', 20]], '2026-10-01 09:10:12.201554', '2026-10-28 15:20:41.118306', '2026-10-28 16:00:00.302118', ['US', 'Taxable', 'Growth']],
-    ['W202', 'myway', 'MyWay US Equity Tax-Aware', 812, 301.64, [['B303', 60], ['B301', 20], ['B304', 20]], '2026-10-01 09:14:55.873310', '2026-10-28 15:22:09.551870', '2026-10-28 16:05:00.110482', ['US', 'Tax-aware', 'Core equity']],
-    ['W203', 'myway', 'MyWay Global Equity', 233, 84.17, [['B303', 35], ['B305', 25], ['B301', 15], ['B302', 15], ['B306', 10]], '2026-10-02 10:31:40.664120', '2026-10-29 17:02:15.904553', null, ['Global', 'Taxable', 'Growth']],
-    ['W204', 'myway', 'MyWay Balanced Tax-Aware', 1104, 418.92, [['B308', 40], ['B303', 35], ['B305', 15], ['B301', 10]], '2026-10-02 10:40:06.217844', '2026-10-28 15:31:52.660291', '2026-10-28 16:10:00.581036', ['Global', 'Tax-aware', 'Balanced 60/40']],
-    ['W205', 'myway', 'MyWay Income', 377, 129.55, [['B307', 50], ['B304', 35], ['B305', 15]], '2026-10-03 11:02:27.481935', '2026-10-29 17:05:33.270118', null, ['Global', 'Taxable', 'Income']],
-    ['W206', 'myway', 'MyWay Conservative Tax-Aware', 598, 207.81, [['B308', 55], ['B303', 20], ['B307', 15], ['B304', 10]], '2026-10-03 11:15:50.009372', '2026-10-28 15:40:18.736641', '2026-10-28 16:15:00.913205', ['US', 'Tax-aware', 'Conservative']],
+    /* MyWay starting allocations (SAA), exactly as on the CIO "Modular Portfolio Construction" slide (11/10/2026).
+       The questionnaire picks one; advisors then add, remove and re-weight blocks within the guardrails below.
+       Slide note: numbers are rounded; Conservative block 8 is 4.0% here so the allocation totals 100%. */
+    ['W201', 'myway', 'MyWay Conservative SAA', 642, 233.48, [['B301', 2], ['B302', 83], ['B306', 11], ['B308', 4]], '2026-10-01 09:10:12.201554', '2026-10-28 15:20:41.118306', '2026-10-28 16:00:00.302118', ['Conservative']],
+    ['W202', 'myway', 'MyWay Moderate SAA', 1318, 512.76, [['B301', 2], ['B303', 38.4], ['B305', 9.6], ['B306', 33], ['B307', 17]], '2026-10-01 09:14:55.873310', '2026-10-28 15:22:09.551870', '2026-10-28 16:05:00.110482', ['Moderate']],
+    ['W203', 'myway', 'MyWay Aggressive SAA', 704, 301.15, [['B301', 2], ['B304', 13], ['B306', 56.1], ['B307', 28.9]], '2026-10-02 10:31:40.664120', '2026-10-29 17:02:15.904553', null, ['Aggressive']],
     /* Multi-Manager: UBS allocation across third-party SMAs */
     ['M101', 'mm', 'Multi-Manager US Equity Portfolio', 214, 61.42, [['N611', 35], ['N541', 40], ['N602', 25]], '2026-10-01 09:12:44.210331', '2026-10-15 10:02:18.553201', '2026-10-15 10:30:00.118204'],
     ['M102', 'mm', 'Multi-Manager Global Multi-Asset Portfolio', 96, 28.75, [['N533', 25], ['N622', 25], ['N612', 20], ['N529', 15], ['N541', 15]], '2026-10-02 14:31:05.118842', '2026-10-09 11:46:30.774410', null],
@@ -683,14 +707,13 @@
       };
       p.holdings = consolidate(p.sleeves, by).holdings;
       if (d[1] === 'myway') {
-        // advisor guardrails (min / max per block, approved swaps) and the launch values advisors customised against
-        p.guard = {}; p.swaps = {}; p.base = {};
-        p.sleeves.forEach(function (s) {
-          var b = defaultBand(s.alloc);
-          p.guard[s.access] = { min: b.min, max: b.max }; p.base[s.access] = { t: s.alloc, min: b.min, max: b.max };
-          var sw = (SWAPS[s.access] || []).filter(function (x) { return !p.sleeves.some(function (y) { return y.access === x; }); });
-          if (sw.length) p.swaps[s.access] = sw;
-        });
+        // tailoring guardrails, and a copy of them at launch (existing tailored accounts were set against these)
+        var tl = TAILOR[d[0]];
+        p.guard = {}; p.adds = {}; p.health = Object.assign({}, tl.health);
+        p.sleeves.forEach(function (s) { var r = tl.range[s.access] || [defaultBand(s.alloc).min, defaultBand(s.alloc).max]; p.guard[s.access] = { min: r[0], max: r[1] }; });
+        Object.keys(tl.adds).forEach(function (a) { p.adds[a] = { max: tl.adds[a] }; });
+        p.base = { t: {}, guard: JSON.parse(JSON.stringify(p.guard)), adds: JSON.parse(JSON.stringify(p.adds)) };
+        p.sleeves.forEach(function (s) { p.base.t[s.access] = s.alloc; });
       }
       p.snapshots = {};
       ['2026-10-21', '2026-10-14'].forEach(function (dt, i) { p.snapshots[shiftIso(dt, days)] = jitter(p.holdings, hashStr(p.access + dt) + i); });
@@ -723,10 +746,11 @@
   }
 
   window.MDP_SEED = {
-    version: 9,
+    version: 10,
     managers: [M.bk, M.af, M.pl, M.cg, M.vg, M.t12, M.bb, M.mw, M.mm, M.hv], // order used in the Model List header
     managerOptions: [M.t12, M.af, M.bk, M.cg, M.pl, M.vg, M.bb, M.mw, M.mm, M.hv], // order used in the Manager filter
     ubsManagers: [M.bb, M.mw, M.mm, M.hv],
+    blockClass: BLOCK_CLASS,
     houseViewManager: M.hv,
     overlayBps: 4, // model-delivery overlay fee, illustrative
     defaultBand: defaultBand,
