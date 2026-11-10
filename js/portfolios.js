@@ -51,7 +51,10 @@
       return b.sleeves;
     }
     function calc(b, draft) { return C.SEED.consolidate(sleevesOf(b, draft), C.byAccess); }
-    function colorOf(b, access) { var i = b.sleeves.map(function (s) { return s.access; }).indexOf(access); if (i < 0 && b.bdraft) i = b.bdraft.rows.map(function (r) { return r.access; }).indexOf(access); return PALETTE[(i < 0 ? 0 : i) % PALETTE.length]; }
+    /* MyWay blocks keep one colour everywhere (CIO convention: cash gold, fixed income greys, equity reds). */
+    var BLOCK_COL = { B301: '#c9963b', B302: '#5f6261', B303: '#8d8f8c', B304: '#b8bab7', B305: '#3f4d57', B306: '#b8282e', B307: '#e07a7e', B308: '#701a1e' };
+    function colorOf(b, access) { if (BLOCK_COL[access]) return BLOCK_COL[access]; return colorIdx(b, access); }
+    function colorIdx(b, access) { var i = b.sleeves.map(function (s) { return s.access; }).indexOf(access); if (i < 0 && b.bdraft) i = b.bdraft.rows.map(function (r) { return r.access; }).indexOf(access); return PALETTE[(i < 0 ? 0 : i) % PALETTE.length]; }
     function daysSince(stamp) { var d = new Date(stamp.slice(0, 10) + 'T12:00:00'), t = new Date(C.todayISO() + 'T12:00:00'); return Math.round((t - d) / 864e5); }
     function sleeveIssue(m) {
       if (!m) return { level: 'err', text: 'Model not found' };
@@ -157,11 +160,32 @@
       return rows.filter(function (r) { var g = b.guard && b.guard[r.access], v = +r.na || 0; return g && v > EPS && (v < g.min - EPS || v > g.max + EPS); });
     }
 
+    /* A starting allocation must pass its own health checks (Risk, Structure, Diversification). */
+    function healthBreak(b, rows) {
+      if (b.family !== 'myway' || !C.U || !b.health) return '';
+      var rules = { guard: {}, adds: {}, health: b.health };
+      rows.forEach(function (r) { rules.guard[r.access] = { min: 0, max: 100 }; });
+      var f = C.U.checkMix(rules, rows.map(function (r) { return { access: r.access, tgt: +r.na || 0 }; })).fail;
+      return f.length ? 'This starting allocation fails the ' + f[0].k + ' health check: ' + f[0].text + '. Change the weights, or the rule on the Guardrails tab.' : '';
+    }
     function profileHtml(b) {
       if (!b.profile) return '';
-      var K = ['Region', 'Tax', 'Objective'];
-      return '<div class="pf-prof"><span class="k">Client profile</span>' + b.profile.map(function (v, i) { return '<span class="pf-tag"><em>' + K[i] + '</em>' + esc(v) + '</span>'; }).join('') + '</div>';
+      return '<div class="pf-prof"><span class="k">Starting allocation</span><span class="pf-tag"><em>Risk profile</em>' + esc(b.profile[0]) + '</span>' +
+        '<span class="pf-note">Picked by the client questionnaire. Advisors then add, remove and re-weight blocks within the Guardrails.</span>' + structHtml(b) + '</div>';
     }
+    /* asset-class mix of a block allocation: [{cls, w}] */
+    function structOf(sleeves) {
+      var by = { 'Cash': 0, 'Fixed Income': 0, 'Equity': 0 }, bc = C.SEED.blockClass || {};
+      sleeves.forEach(function (s) { var k = bc[s.access]; if (k) by[k] += +s.alloc || 0; });
+      return [['Cash', by.Cash], ['Fixed Income', by['Fixed Income']], ['Equity', by.Equity]];
+    }
+    var SCOL = { 'Cash': '#c9963b', 'Fixed Income': '#8d8f8c', 'Equity': '#b8282e' };
+    function structBar(sleeves, label) {
+      var st = structOf(sleeves);
+      return '<span class="pf-st">' + (label ? '<em>' + label + '</em>' : '') + '<span class="pf-st-b">' + st.map(function (x) { return x[1] > 0 ? '<i style="flex:' + x[1] + ' 1 0;background:' + SCOL[x[0]] + '" data-tip="' + x[0] + ' ' + num(x[1], 1) + '%" data-tip-anchor></i>' : ''; }).join('') + '</span>' +
+        '<span class="pf-st-l">' + st.map(function (x) { return '<b style="color:' + SCOL[x[0]] + '">&#9632;</b> ' + x[0] + ' ' + num(x[1], 1) + '%'; }).join(' &nbsp; ') + '</span></span>';
+    }
+    function structHtml(b) { return b.family === 'myway' ? structBar(b.sleeves) : ''; }
     function renderComposition(b, c) {
       var w = L(b), mw = b.family === 'myway';
       var opts = C.S.models.filter(function (m) { return !eligibleWhy(b, m); }).map(function (m) { return '<option value="' + esc(m.access) + '">' + esc(m.access + ' · ' + m.name + (mw ? '' : ' · ' + m.manager)) + '</option>'; }).join('');
@@ -214,7 +238,8 @@
       var why = invalid ? 'Each allocation must be a number between 0 and 100' :
         off ? 'Allocations must total 100.000% to submit. Current total: ' + t.toFixed(3) + '%' :
         !d ? 'No changes to submit' :
-        brk.length ? brk[0].access + ' at ' + (+brk[0].na).toFixed(3) + '% is outside its advisor range (' + b.guard[brk[0].access].min + '-' + b.guard[brk[0].access].max + '%). Change the range on the Guardrails tab first, or keep the target inside it.' : '';
+        brk.length ? brk[0].access + ' at ' + (+brk[0].na).toFixed(3) + '% is outside its advisor range (' + b.guard[brk[0].access].min + '-' + b.guard[brk[0].access].max + '%). Change the range on the Guardrails tab first, or keep the target inside it.' :
+        healthBreak(b, rows);
       C.setBtn($('#bb-submit'), why);
       C.setBtn($('#bb-confirm'), confirmedHere === b.access ? 'Portfolio already confirmed at ' + fmt.conf(b.confirmed) + '.' : d ? 'Confirm is available only when there are no changes. Submit or clear your changes first.' : '');
       var sb = $('#bb-submit');
@@ -235,7 +260,7 @@
     var HV = { block: null, q: '', f: 'all', sleeve: null, sort: { key: 'weight', dir: -1 } };
     function pct(v) { return v.toFixed(3) + '%'; }
     /* Diversified funds/ETFs are exempt from the 5% single-security review. */
-    function isFund(t) { var x = SEC[t]; return !!x && /^(ishares|vanguard|capgroup|other_etf|afunds|ucits)$/.test(x.group); }
+    function isFund(t) { var x = SEC[t]; return !!x && /^(ishares|vanguard|capgroup|other_etf|afunds|ucits|bb_etf)$/.test(x.group); }
     function overLimit(h) { return h.weight > 5 && !isFund(h.ticker); }
     function renderHoldings(b, c) {
       if (HV.block !== b.access) { HV = { block: b.access, q: '', f: 'all', sleeve: null, sort: { key: 'weight', dir: -1 } }; }
@@ -268,7 +293,9 @@
             '<span class="bb-card-n" title="' + esc(m ? m.name : '') + '">' + esc(m ? m.name : '') + '</span>' +
             '<span class="bb-card-m">' + st.n + ' securities &middot; ' + st.uniq + ' only here</span></button>';
         }).join('') + '</div></div>';
-      c.innerHTML = (preview ? '<div class="bb-prev">' + I.info + '<span><b>Preview.</b> Showing your unsubmitted allocation. Trading still uses the published model until you Submit.</span></div>' : '') +
+      var allFunds = non.length && non.every(function (h) { return isFund(h.ticker); });
+      c.innerHTML = (allFunds ? '<div class="bb-prev etf-note">' + I.info + '<span><b>All positions are ETFs.</b> Looking through to the securities inside each ETF needs ETF holdings data, which MDP does not hold today.</span></div>' : '') +
+        (preview ? '<div class="bb-prev">' + I.info + '<span><b>Preview.</b> Showing your unsubmitted allocation. Trading still uses the published model until you Submit.</span></div>' : '') +
         strip +
         '<div class="bb-tiles">' +
           tile('Securities', non.length, 'across ' + sl.length + ' ' + (sl.length === 1 ? w.one : w.many)) +
@@ -400,9 +427,10 @@
       b.sleeves = d.rows.filter(function (r) { return +r.na > EPS; }).map(function (r) { return { access: r.access, alloc: r3(+r.na) }; });
       if (b.family === 'myway') {
         // guardrails follow the composition: new blocks get the default band, removed blocks drop out
-        var g2 = {}, sw2 = {};
-        b.sleeves.forEach(function (s) { g2[s.access] = (b.guard && b.guard[s.access]) || C.SEED.defaultBand(s.alloc); if (b.swaps && b.swaps[s.access]) sw2[s.access] = b.swaps[s.access].filter(function (x) { return !b.sleeves.some(function (y) { return y.access === x; }); }); });
-        b.guard = g2; b.swaps = sw2;
+        var g2 = {}, ad2 = {};
+        b.sleeves.forEach(function (s) { g2[s.access] = (b.guard && b.guard[s.access]) || C.SEED.defaultBand(s.alloc); });
+        Object.keys(b.adds || {}).forEach(function (a) { if (!g2[a]) ad2[a] = b.adds[a]; });
+        b.guard = g2; b.adds = ad2;
       }
       b.holdings = calc(b, false).holdings;
       delete b.bdraft;
@@ -475,7 +503,7 @@
 
     refreshStatuses();
     return {
-      subsFor: subsFor, calc: calc, sleevesOf: sleevesOf, colorOf: colorOf, dirty: dirty, blocks: blocks, sleeveIssue: sleeveIssue, eligibleWhy: eligibleWhy, renderComposition: renderComposition, renderHoldings: renderHoldings, refreshStatuses: refreshStatuses,
+      subsFor: subsFor, structBar: structBar, structOf: structOf, calc: calc, sleevesOf: sleevesOf, colorOf: colorOf, dirty: dirty, blocks: blocks, sleeveIssue: sleeveIssue, eligibleWhy: eligibleWhy, renderComposition: renderComposition, renderHoldings: renderHoldings, refreshStatuses: refreshStatuses,
       reason: reason, memberHtml: memberHtml, onUnderlyingApproved: onUnderlyingApproved, exportBlock: exportBlock, isBlock: isBlock, label: L, usedIn: usedIn,
       leave: function (access) { if (confirmedHere !== access) confirmedHere = null; },
       isEditing: function (b) { return !!(b.bdraft && b.bdraft.live); }
