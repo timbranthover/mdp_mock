@@ -51,7 +51,10 @@
       return b.sleeves;
     }
     function calc(b, draft) { return C.SEED.consolidate(sleevesOf(b, draft), C.byAccess); }
-    function colorOf(b, access) { var i = b.sleeves.map(function (s) { return s.access; }).indexOf(access); if (i < 0 && b.bdraft) i = b.bdraft.rows.map(function (r) { return r.access; }).indexOf(access); return PALETTE[(i < 0 ? 0 : i) % PALETTE.length]; }
+    /* MyWay blocks keep one colour everywhere (CIO convention: cash gold, fixed income greys, equity reds). */
+    var BLOCK_COL = { B301: '#c9963b', B302: '#5f6261', B303: '#8d8f8c', B304: '#b8bab7', B305: '#3f4d57', B306: '#b8282e', B307: '#e07a7e', B308: '#701a1e' };
+    function colorOf(b, access) { if (BLOCK_COL[access]) return BLOCK_COL[access]; return colorIdx(b, access); }
+    function colorIdx(b, access) { var i = b.sleeves.map(function (s) { return s.access; }).indexOf(access); if (i < 0 && b.bdraft) i = b.bdraft.rows.map(function (r) { return r.access; }).indexOf(access); return PALETTE[(i < 0 ? 0 : i) % PALETTE.length]; }
     function daysSince(stamp) { var d = new Date(stamp.slice(0, 10) + 'T12:00:00'), t = new Date(C.todayISO() + 'T12:00:00'); return Math.round((t - d) / 864e5); }
     function sleeveIssue(m) {
       if (!m) return { level: 'err', text: 'Model not found' };
@@ -157,6 +160,14 @@
       return rows.filter(function (r) { var g = b.guard && b.guard[r.access], v = +r.na || 0; return g && v > EPS && (v < g.min - EPS || v > g.max + EPS); });
     }
 
+    /* A starting allocation must pass its own health checks (Risk, Structure, Diversification). */
+    function healthBreak(b, rows) {
+      if (b.family !== 'myway' || !C.U || !b.health) return '';
+      var rules = { guard: {}, adds: {}, health: b.health };
+      rows.forEach(function (r) { rules.guard[r.access] = { min: 0, max: 100 }; });
+      var f = C.U.checkMix(rules, rows.map(function (r) { return { access: r.access, tgt: +r.na || 0 }; })).fail;
+      return f.length ? 'This starting allocation fails the ' + f[0].k + ' health check: ' + f[0].text + '. Change the weights, or the rule on the Guardrails tab.' : '';
+    }
     function profileHtml(b) {
       if (!b.profile) return '';
       return '<div class="pf-prof"><span class="k">Starting allocation</span><span class="pf-tag"><em>Risk profile</em>' + esc(b.profile[0]) + '</span>' +
@@ -227,7 +238,8 @@
       var why = invalid ? 'Each allocation must be a number between 0 and 100' :
         off ? 'Allocations must total 100.000% to submit. Current total: ' + t.toFixed(3) + '%' :
         !d ? 'No changes to submit' :
-        brk.length ? brk[0].access + ' at ' + (+brk[0].na).toFixed(3) + '% is outside its advisor range (' + b.guard[brk[0].access].min + '-' + b.guard[brk[0].access].max + '%). Change the range on the Guardrails tab first, or keep the target inside it.' : '';
+        brk.length ? brk[0].access + ' at ' + (+brk[0].na).toFixed(3) + '% is outside its advisor range (' + b.guard[brk[0].access].min + '-' + b.guard[brk[0].access].max + '%). Change the range on the Guardrails tab first, or keep the target inside it.' :
+        healthBreak(b, rows);
       C.setBtn($('#bb-submit'), why);
       C.setBtn($('#bb-confirm'), confirmedHere === b.access ? 'Portfolio already confirmed at ' + fmt.conf(b.confirmed) + '.' : d ? 'Confirm is available only when there are no changes. Submit or clear your changes first.' : '');
       var sb = $('#bb-submit');

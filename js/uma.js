@@ -5,7 +5,8 @@
  *   Impact        before approval: what a pending change reaches (accounts, portfolios, turnover, cross-sleeve conflicts)
  *   Delivery      every approval becomes a delivery: MDP -> Vestmark -> accounts traded -> reconciled, with exceptions
  *   Accounts      one account, all its sleeves, every holding traced back to the model that put it there
- *   Guardrails    per MyWay portfolio: min / max per block and approved swaps (the feed the proposal tool reads)
+ *   Guardrails    per MyWay starting allocation: block ranges, blocks that may be added, portfolio health checks
+ *                 (one published record the questionnaire, tailoring screen, enrollment and rebalancing read)
  *   Cross-sleeve  one sleeve reduces what another adds within 30 days (wash-sale risk in taxable accounts)
  *   Fees          portfolio assets x allocation = each manager's billable assets
  *
@@ -347,80 +348,139 @@
     /* ================= ACCOUNTS: look-through ================= */
     var aCache = {};
     function clampFill(vals, lo, hi) { // make vals sum to 100 while respecting [lo, hi] where possible
-      for (var k = 0; k < 6; k++) {
+      for (var k = 0; k < 8; k++) {
         var sum = vals.reduce(function (a, b) { return a + b; }, 0), diff = 100 - sum;
         if (Math.abs(diff) < 0.0005) break;
         var room = vals.map(function (v, i) { return diff > 0 ? hi[i] - v : v - lo[i]; }), tot = room.reduce(function (a, b) { return a + Math.max(0, b); }, 0);
         if (tot <= 0) { vals[0] += diff; break; }
         vals = vals.map(function (v, i) { return v + diff * Math.max(0, room[i]) / tot; });
       }
-      return vals.map(function (v) { return Math.round(v * 10) / 10; });
+      vals = vals.map(function (v) { return Math.round(v * 10) / 10; });
+      var r = Math.round((100 - vals.reduce(function (a, b) { return a + b; }, 0)) * 10) / 10, big = 0;
+      vals.forEach(function (v, i) { if (v > vals[big]) big = i; }); vals[big] = Math.round((vals[big] + r) * 10) / 10;
+      return vals;
     }
-    /* Every account of a portfolio. Advisor-customised accounts (MyWay) were set against the launch ranges,
-       so a later guardrail or target change can leave them outside the current range, as in real life. */
+    var BC = SEED.blockClass || {};
+    function classOf(access) { return BC[access] || 'Other'; }
+
+    /* ---------- MyWay health checks: one function used by accounts, guardrails, composition and the feed ----------
+       rules = { guard: {access: {min,max}}, adds: {access: {max}}, health: {eqMin,eqMax,cashMin,cashMax,maxBlock,minBlocks} }
+       mix   = [{access, tgt}] the block weights to test (an account's tailored targets, or a starting allocation) */
+    function rulesOf(p) { return { guard: p.guard || {}, adds: p.adds || {}, health: p.health || {} }; }
+    function checkMix(rules, mix) {
+      var h = rules.health || {}, eq = 0, cash = 0, big = null, n = 0, offRange = [], notAllowed = [];
+      mix.forEach(function (x) {
+        if (!(x.tgt > 0.05)) return;
+        n++;
+        var k = classOf(x.access); if (k === 'Equity') eq += x.tgt; else if (k === 'Cash') cash += x.tgt;
+        if (!big || x.tgt > big.tgt) big = x;
+        var g = rules.guard[x.access], ad = rules.adds[x.access];
+        if (g) { if (x.tgt < g.min - 0.05 || x.tgt > g.max + 0.05) offRange.push(x.access); }
+        else if (ad) { if (x.tgt > ad.max + 0.05) offRange.push(x.access); }
+        else notAllowed.push(x.access);
+      });
+      Object.keys(rules.guard).forEach(function (a) { var g = rules.guard[a]; if (g.min > 0.05 && !mix.some(function (x) { return x.access === a && x.tgt > 0.05; })) offRange.push(a); });
+      eq = Math.round(eq * 10) / 10; cash = Math.round(cash * 10) / 10;
+      var out = [
+        { k: 'Block ranges', ok: !offRange.length && !notAllowed.length,
+          text: notAllowed.length ? notAllowed.join(', ') + ' is not an allowed block' : offRange.length ? offRange.join(', ') + ' outside its range' : 'Every block within its range' },
+        { k: 'Risk', ok: eq >= h.eqMin - 0.05 && eq <= h.eqMax + 0.05, text: 'Equity ' + num(eq, 1) + '% (allowed ' + h.eqMin + '-' + h.eqMax + '%)' },
+        { k: 'Structure', ok: cash >= h.cashMin - 0.05 && cash <= h.cashMax + 0.05, text: 'Cash ' + num(cash, 1) + '% (allowed ' + h.cashMin + '-' + h.cashMax + '%)' },
+        { k: 'Diversification', ok: (!big || big.tgt <= h.maxBlock + 0.05) && n >= h.minBlocks, text: n < h.minBlocks ? n + ' blocks (at least ' + h.minBlocks + ')' : 'Largest block ' + (big ? big.access + ' ' + num(big.tgt, 1) : '0') + '% (max ' + h.maxBlock + '%)' },
+        { k: 'Sustainability', na: true, ok: true, text: 'Not evaluated: needs ESG data, which MDP does not hold' }
+      ];
+      return { checks: out, fail: out.filter(function (c) { return !c.ok; }), eq: eq, cash: cash };
+    }
+    function checkHtml(c) {
+      return '<span class="hc ' + (c.na ? 'na' : c.ok ? 'ok' : 'bad') + '" data-tip="' + esc(c.text) + '" data-tip-anchor><i>' + (c.na ? '&ndash;' : c.ok ? '&#10003;' : '!') + '</i>' + c.k + '</span>';
+    }
+
+    /* Every account of a portfolio, generated from its index (never stored).
+       MyWay: about 30% of accounts are tailored by an advisor against the rules in force at launch (p.base):
+       blocks re-weighted inside their ranges, a removable block dropped, or an allowed block added.
+       Checks always run against the CURRENT rules, so tightening a rule shows which accounts it catches. */
     function accountsOf(p) {
-      var key = JSON.stringify(p.sleeves) + JSON.stringify(p.guard || 0) + p.accounts, hit = aCache[p.access];
+      var key = JSON.stringify(p.sleeves) + JSON.stringify(rulesOf(p)) + p.accounts, hit = aCache[p.access];
       if (hit && hit.key === key) return hit.list;
-      var list = [], n = p.accounts, sl = p.sleeves, top = p.holdings.filter(function (h) { return h.ticker !== CASH && SEC[h.ticker] && !/ishares|vanguard|capgroup|other_etf|afunds/.test(SEC[h.ticker].group); }).sort(function (a, b) { return b.weight - a.weight; }).slice(0, 12);
+      var list = [], n = p.accounts, rules = rulesOf(p), base = p.base;
+      var top = p.holdings.filter(function (h) { return h.ticker !== CASH && SEC[h.ticker]; }).sort(function (a, b) { return b.weight - a.weight; }).slice(0, 8);
       for (var i = 0; i < n; i++) {
         var r = rng(hash(p.access + '#' + i)), x = r() * REG_TOT, reg = REG[0];
         for (var j = 0, acc = 0; j < REG.length; j++) { acc += REG[j][1]; if (x < acc) { reg = REG[j]; break; } }
-        var custom = p.family === 'myway' && r() < 0.28, swapped = null;
-        var tgt = sl.map(function (s) { return s.alloc; });
+        var custom = p.family === 'myway' && !!base && r() < 0.3, mix, added = [], removed = [];
         if (custom) {
-          var lo = [], hi = [];
-          tgt = sl.map(function (s) { var b = p.base && p.base[s.access]; if (!b) { lo.push(0); hi.push(0); return 0; } lo.push(b.min); hi.push(b.max); return b.t + (r() * 2 - 1) * (b.max - b.t); });
-          tgt = clampFill(tgt, lo, hi);
-          if (r() < 0.18) sl.some(function (s, k) { var sw = p.swaps && p.swaps[s.access]; if (sw && sw.length && tgt[k] > 0) { swapped = { i: k, from: s.access, to: sw[0] }; return true; } return false; });
-        } else { r(); }
-        var wild = r() < 0.07 ? 3.2 : 1, act = tgt.map(function (t) { return t * (1 + (r() * 2 - 1) * 0.05 * wild); }), as = act.reduce(function (a, b) { return a + b; }, 0);
-        act = act.map(function (v) { return Math.round(v / as * 1000) / 10; });
-        var drift = 0; act.forEach(function (v, k) { drift = Math.max(drift, Math.abs(v - tgt[k])); });
+          var ids = Object.keys(base.t), lo = [], hi = [], vals = [];
+          var rem = r() < 0.16 ? ids.filter(function (a) { return base.guard[a] && base.guard[a].min === 0 && a !== 'B301'; }) : [];
+          var drop = rem.length ? rem[Math.floor(r() * rem.length)] : null;
+          ids.forEach(function (a) {
+            var g = base.guard[a] || { min: 0, max: 100 }, t = base.t[a];
+            if (a === drop) { lo.push(0); hi.push(0); vals.push(0); removed.push(a); return; }
+            var lo2 = Math.max(g.min, t * 0.6), hi2 = Math.min(g.max, t * 1.4 + 2);
+            lo.push(g.min); hi.push(g.max); vals.push(lo2 + r() * (hi2 - lo2));
+          });
+          var addable = Object.keys(base.adds || {});
+          if (addable.length && r() < 0.32) { var ad = addable[Math.floor(r() * addable.length)], mx = base.adds[ad].max; ids = ids.concat([ad]); lo.push(2); hi.push(mx); vals.push(Math.max(2, Math.round(mx * (0.3 + r() * 0.6)))); added.push(ad); }
+          vals = clampFill(vals, lo, hi);
+          mix = ids.map(function (a, k) { return { access: a, tgt: vals[k] }; });
+        } else {
+          r(); r(); r();
+          mix = p.sleeves.map(function (s) { return { access: s.access, tgt: s.alloc }; });
+        }
+        var wild = r() < 0.07 ? 3.2 : 1, act = mix.map(function (m) { return m.tgt * (1 + (r() * 2 - 1) * 0.05 * wild); }), as = act.reduce(function (a, b) { return a + b; }, 0), drift = 0;
+        mix.forEach(function (m, k) { m.act = Math.round(act[k] / as * 1000) / 10; drift = Math.max(drift, Math.abs(m.act - m.tgt)); });
         var restr = null, rr = r();
         if (rr < 0.12 && top.length) { var tk = top[Math.floor(r() * top.length)].ticker; restr = rr < 0.07 ? { type: 'Do not hold', ticker: tk } : { type: 'Do not sell', ticker: tk }; } else { r(); }
-        var out = false;
-        if (p.guard) sl.forEach(function (s, k) { var g = p.guard[s.access]; if (g && (tgt[k] < g.min - 0.05 || tgt[k] > g.max + 0.05)) out = true; });
-        list.push({ i: i, id: acctId(p.access, i), reg: reg[0], taxable: !!reg[2], custom: custom, swapped: swapped, tgt: tgt, act: act, drift: Math.round(drift * 10) / 10, restr: restr, ptm: !!reg[2] && r() < 0.3, out: out });
+        var chk = p.family === 'myway' ? checkMix(rules, mix) : null;
+        list.push({ i: i, id: acctId(p.access, i), reg: reg[0], taxable: !!reg[2], custom: custom, added: added, removed: removed, mix: mix,
+          drift: Math.round(drift * 10) / 10, restr: restr, ptm: !!reg[2] && r() < 0.3, chk: chk, out: !!(chk && chk.fail.length) });
       }
       aCache[p.access] = { key: key, list: list };
       return list;
     }
     var AV = { p: null, f: 'all', q: '', page: 1, open: null };
     var DRIFT_LIMIT = 3;
-    function sleeveBar(p, a, vals) {
-      return '<div class="ac-bar">' + p.sleeves.map(function (s, k) { var acc = a.swapped && a.swapped.i === k ? a.swapped.to : s.access; return vals[k] > 0 ? '<i style="flex:' + vals[k] + ' 1 0;background:' + B().colorOf(p, s.access) + '" data-tip="' + esc(acc) + ' ' + vals[k].toFixed(1) + '%" data-tip-anchor></i>' : ''; }).join('') + '</div>';
+    function color(p, a) { return B().colorOf(p, a); }
+    function mixBar(p, mix, key) {
+      return '<div class="ac-bar">' + mix.map(function (m) { var v = m[key || 'act']; return v > 0 ? '<i style="flex:' + v + ' 1 0;background:' + color(p, m.access) + '" data-tip="' + esc(m.access) + ' ' + v.toFixed(1) + '%" data-tip-anchor></i>' : ''; }).join('') + '</div>';
+    }
+    function tailorText(a) {
+      var t = [];
+      if (a.custom) t.push('re-weighted');
+      if (a.added.length) t.push('added ' + a.added.join(', '));
+      if (a.removed.length) t.push('removed ' + a.removed.join(', '));
+      return t.join('; ');
     }
     function acctFlags(a) {
-      return (a.custom ? '<span class="ac-f c" data-tip="Advisor changed the block weights within the guardrails" data-tip-anchor>Customized</span>' : '') +
-        (a.swapped ? '<span class="ac-f c" data-tip="' + esc(a.swapped.from + ' swapped for ' + a.swapped.to + ' (approved swap)') + '" data-tip-anchor>Swap</span>' : '') +
+      return (a.custom ? '<span class="ac-f c" data-tip="' + esc('Tailored by the advisor: ' + tailorText(a)) + '" data-tip-anchor>Tailored' + (a.added.length ? ' +' + a.added.length : '') + (a.removed.length ? ' &minus;' + a.removed.length : '') + '</span>' : '') +
         (a.restr ? '<span class="ac-f r" data-tip="' + esc(a.restr.type + ': ' + a.restr.ticker) + '" data-tip-anchor>Restriction</span>' : '') +
         (a.ptm ? '<span class="ac-f t" data-tip="Tax-managed service is on for this account" data-tip-anchor>Tax-managed</span>' : '');
     }
     function acctStatus(a) {
-      return a.out ? '<span class="dv-chip ex">Outside guardrail</span>' : a.drift > DRIFT_LIMIT ? '<span class="dv-chip fl">Rebalance due</span>' : '<span class="dv-chip ok">In line</span>';
+      return a.out ? '<span class="dv-chip ex" data-tip="' + esc(a.chk.fail.map(function (c) { return c.k + ': ' + c.text; }).join(' · ')) + '" data-tip-anchor>Outside guardrails</span>' : a.drift > DRIFT_LIMIT ? '<span class="dv-chip fl">Rebalance due</span>' : '<span class="dv-chip ok">In line</span>';
     }
     function renderAccounts(p, c) {
       if (AV.p !== p.access) AV = { p: p.access, f: 'all', q: '', page: 1, open: null };
       if (!p.accounts) { c.innerHTML = '<div class="dv-empty">' + I.info + '<span>No accounts hold this portfolio yet.</span></div>'; return; }
-      var list = accountsOf(p), w = B().label(p);
+      var list = accountsOf(p), w = B().label(p), mw = p.family === 'myway';
       if (AV.open != null && list[AV.open]) { renderAccount(p, list[AV.open], c); return; }
-      var cnt = { custom: 0, restr: 0, drift: 0, out: 0, taxable: 0, ptm: 0 };
-      list.forEach(function (a) { if (a.custom) cnt.custom++; if (a.restr) cnt.restr++; if (a.drift > DRIFT_LIMIT) cnt.drift++; if (a.out) cnt.out++; if (a.taxable) cnt.taxable++; if (a.ptm) cnt.ptm++; });
+      var cnt = { custom: 0, added: 0, removed: 0, restr: 0, drift: 0, out: 0, taxable: 0, ptm: 0 };
+      list.forEach(function (a) { if (a.custom) cnt.custom++; if (a.added.length) cnt.added++; if (a.removed.length) cnt.removed++; if (a.restr) cnt.restr++; if (a.drift > DRIFT_LIMIT) cnt.drift++; if (a.out) cnt.out++; if (a.taxable) cnt.taxable++; if (a.ptm) cnt.ptm++; });
       var tile = function (k, v, s, cls) { return '<div class="bb-tile' + (cls ? ' ' + cls : '') + '"><span class="k">' + k + '</span><span class="v">' + v + '</span><span class="s">' + s + '</span></div>'; };
       c.innerHTML =
         '<div class="bb-tiles">' + tile('Accounts', num(list.length, 0), money(p.aum) + ' in this portfolio') +
-          tile('At Model Weights', num(list.length - cnt.custom, 0), p.family === 'myway' ? num(cnt.custom, 0) + ' customized by an advisor' : 'no advisor customization') +
-          tile('Taxable', num(cnt.taxable, 0), num(cnt.ptm, 0) + ' with tax-managed service') +
+          tile(mw ? 'At Starting Allocation' : 'At Model Weights', num(list.length - cnt.custom, 0), mw ? num(cnt.custom, 0) + ' tailored by an advisor' : 'no advisor tailoring') +
+          (mw ? tile('Blocks Added / Removed', num(cnt.added, 0) + ' <small>/</small> ' + num(cnt.removed, 0), 'accounts') : tile('Taxable', num(cnt.taxable, 0), num(cnt.ptm, 0) + ' with tax-managed service')) +
           tile('Rebalance Due', num(cnt.drift, 0), 'a ' + w.one + ' is ' + DRIFT_LIMIT + '+ points off target', cnt.drift ? 'live' : '') +
-          tile('Outside Guardrail', num(cnt.out, 0), p.family === 'myway' ? 'advisor weights no longer in range' : 'not applicable', cnt.out ? 'attn' : '') + '</div>' +
+          tile('Outside Guardrails', mw ? num(cnt.out, 0) : '-', mw ? 'fail a block range or health check' : 'not applicable', cnt.out ? 'attn' : '') + '</div>' +
         '<div class="bb-hbar"><div class="fchips" id="ac-chips"></div><label class="search-box">' + I.search + '<input id="ac-q" placeholder="Search account" value="' + esc(AV.q) + '" autocomplete="off"></label></div>' +
-        '<div class="grid-scroll ac-scroll"><table class="grid ac-grid"><colgroup><col style="width:120px"><col style="width:150px"><col><col style="width:110px"><col style="width:300px"><col style="width:150px"></colgroup>' +
+        '<div class="grid-scroll ac-scroll"><table class="grid ac-grid"><colgroup><col style="width:120px"><col style="width:140px"><col><col style="width:104px"><col style="width:250px"><col style="width:160px"></colgroup>' +
         '<thead><tr><th>Account</th><th>Registration</th><th>' + w.Many + ' (actual weights)</th><th class="r">Largest drift</th><th>Flags</th><th>Status</th></tr></thead><tbody id="ac-body"></tbody></table></div>' +
-        '<div class="grid-foot db-foot"><span class="dv-src">Account data: Vestmark (mock in this twin). Click an account to see every holding traced to its ' + w.one + '.</span><div class="pager" id="ac-pager"></div></div>';
+        '<div class="grid-foot db-foot"><span class="dv-src">Account data: Vestmark (mock in this twin). Click an account to compare it with the ' + (mw ? 'starting allocation' : 'model') + ' and see every holding.</span><div class="pager" id="ac-pager"></div></div>';
       var draw = function () {
         var q = AV.q.trim().toUpperCase().replace(/\s+/g, ''), f = AV.f;
         var rows = list.filter(function (a) {
           if (f === 'custom' && !a.custom) return false;
+          if (f === 'added' && !(a.added.length || a.removed.length)) return false;
           if (f === 'restr' && !a.restr) return false;
           if (f === 'drift' && !(a.drift > DRIFT_LIMIT)) return false;
           if (f === 'out' && !a.out) return false;
@@ -429,145 +489,196 @@
         });
         var per = 25, pages = Math.max(1, Math.ceil(rows.length / per)); if (AV.page > pages) AV.page = pages;
         var chip = function (v, label, n) { return '<button class="fchip' + (f === v ? ' on' : '') + '" data-u="ac-f" data-v="' + v + '">' + label + ' <b>' + num(n, 0) + '</b></button>'; };
-        $('#ac-chips').innerHTML = chip('all', 'All', list.length) + (p.family === 'myway' ? chip('custom', 'Customized', cnt.custom) : '') + chip('restr', 'Restrictions', cnt.restr) + chip('ptm', 'Tax-Managed', cnt.ptm) + chip('drift', 'Rebalance Due', cnt.drift) + (p.family === 'myway' ? chip('out', 'Outside Guardrail', cnt.out) : '');
+        $('#ac-chips').innerHTML = chip('all', 'All', list.length) + (mw ? chip('custom', 'Tailored', cnt.custom) + chip('added', 'Blocks Added Or Removed', list.filter(function (a) { return a.added.length || a.removed.length; }).length) : '') + chip('restr', 'Restrictions', cnt.restr) + chip('ptm', 'Tax-Managed', cnt.ptm) + chip('drift', 'Rebalance Due', cnt.drift) + (mw ? chip('out', 'Outside Guardrails', cnt.out) : '');
         $('#ac-body').innerHTML = rows.length ? rows.slice((AV.page - 1) * per, AV.page * per).map(function (a) {
-          return '<tr class="dv-row" data-u="ac-open" data-i="' + a.i + '"><td class="b">' + a.id + '</td><td>' + a.reg + '</td><td>' + sleeveBar(p, a, a.act) + '</td><td class="r' + (a.drift > DRIFT_LIMIT ? ' neg b' : '') + '">' + a.drift.toFixed(1) + ' pts</td><td>' + acctFlags(a) + '</td><td>' + acctStatus(a) + '</td></tr>';
+          return '<tr class="dv-row" data-u="ac-open" data-i="' + a.i + '"><td class="b">' + a.id + '</td><td>' + a.reg + '</td><td>' + mixBar(p, a.mix) + '</td><td class="r' + (a.drift > DRIFT_LIMIT ? ' neg b' : '') + '">' + a.drift.toFixed(1) + ' pts</td><td>' + acctFlags(a) + '</td><td>' + acctStatus(a) + '</td></tr>';
         }).join('') : '<tr class="empty-row"><td colspan="6">No accounts match</td></tr>';
         $('#ac-pager').innerHTML = '<span class="count">' + (rows.length ? (AV.page - 1) * per + 1 : 0) + ' to ' + Math.min(AV.page * per, rows.length) + ' of ' + num(rows.length, 0) + '</span><button data-u="ac-pg" data-v="-1"' + (AV.page <= 1 ? ' disabled' : '') + '>' + I.prev + '</button><span>Page ' + AV.page + ' of ' + pages + '</span><button data-u="ac-pg" data-v="1"' + (AV.page >= pages ? ' disabled' : '') + '>' + I.next + '</button>';
       };
       c._draw = draw; draw();
       $('#ac-q').addEventListener('input', function (e) { AV.q = e.target.value; AV.page = 1; draw(); });
     }
-    /* One account: sleeves on the left, every security on the right, each traced to the sleeve(s) that hold it. */
+    /* One account: starting allocation vs this account, health checks, every holding traced to its block. */
     function renderAccount(p, a, c) {
-      var w = B().label(p), acc = {}, contrib = {}, cashW = 0;
-      var sleeves = p.sleeves.map(function (s, k) { var use = a.swapped && a.swapped.i === k ? a.swapped.to : s.access; return { s: s, k: k, access: use, m: model(use), tgt: a.tgt[k], act: a.act[k], color: B().colorOf(p, s.access) }; });
-      sleeves.forEach(function (x) {
-        if (!x.m || !(x.act > 0)) return;
-        x.m.holdings.forEach(function (h) {
+      var w = B().label(p), mw = p.family === 'myway', acc = {}, contrib = {}, cashW = 0, latest = deliveriesOf(p)[0];
+      var start = {}; p.sleeves.forEach(function (s) { start[s.access] = s.alloc; });
+      var rows0 = a.mix.map(function (x) { return x.access; });
+      p.sleeves.forEach(function (s) { if (rows0.indexOf(s.access) < 0) rows0.push(s.access); });
+      var mixBy = {}; a.mix.forEach(function (x) { mixBy[x.access] = x; });
+      a.mix.forEach(function (x) {
+        var m = model(x.access); if (!m || !(x.act > 0)) return;
+        m.holdings.forEach(function (h) {
           var v = x.act * h.weight / 100;
           if (h.ticker === CASH || (a.restr && a.restr.type === 'Do not hold' && a.restr.ticker === h.ticker)) { cashW += v; return; }
-          acc[h.ticker] = (acc[h.ticker] || 0) + v; (contrib[h.ticker] = contrib[h.ticker] || []).push({ access: x.access, c: v, color: x.color });
+          acc[h.ticker] = (acc[h.ticker] || 0) + v; (contrib[h.ticker] = contrib[h.ticker] || []).push({ access: x.access, c: v });
         });
       });
       var rows = Object.keys(acc).map(function (t) { return { t: t, w: acc[t] }; }).sort(function (x, y) { return y.w - x.w; }), max = rows.length ? rows[0].w : 1;
-      var latest = deliveriesOf(p)[0];
+      var startMix = p.sleeves.map(function (s) { return { access: s.access, tgt: s.alloc, act: s.alloc }; });
+      var cmp = mw ? '<div class="ac-cmp"><div class="ac-cmp-h"><span class="k">Starting allocation and this account</span>' + (a.custom ? '<span class="ac-f c">Tailored: ' + esc(tailorText(a)) + '</span>' : '<span class="muted">Not tailored: follows the starting allocation</span>') + '</div>' +
+          '<div class="ac-cmp-r"><em>Starting allocation</em>' + mixBar(p, startMix, 'tgt') + '</div><div class="ac-cmp-r"><em>This account</em>' + mixBar(p, a.mix, 'tgt') + '</div>' +
+          '<div class="ac-cmp-s">' + B().structBar(startMix.map(function (x) { return { access: x.access, alloc: x.tgt }; }), 'Starting') + B().structBar(a.mix.map(function (x) { return { access: x.access, alloc: x.tgt }; }), 'This account') + '</div>' +
+          '<div class="ac-hc"><span class="k">Health checks</span>' + a.chk.checks.map(checkHtml).join('') + '</div></div>'
+        : '<div class="ac-pie"><span class="k">The whole account</span>' + mixBar(p, a.mix) + '</div>';
       c.innerHTML =
         '<div class="ac-head"><button class="ac-back" data-u="ac-back">' + I.left + 'All accounts</button><div class="ac-id"><b>' + a.id + '</b><span>' + a.reg + ' &middot; ' + (a.taxable ? 'Taxable' : 'Tax-deferred') + '</span>' + acctFlags(a) + acctStatus(a) + '</div>' +
-          '<span class="dv-src">Model source: ' + esc(p.access) + (latest ? ', delivery ' + latest.id : '') + '. Account data: Vestmark (mock).</span></div>' +
-        '<div class="ac-pie"><span class="k">The whole account</span>' + sleeveBar(p, a, a.act) + '</div>' +
+          '<span class="dv-src">Model source: ' + esc(p.access) + (latest ? ', delivery ' + latest.id : '') + '. Account data: Vestmark (mock).</span></div>' + cmp +
         '<div class="ac-cols"><div class="ac-left"><div class="dv-sec-h">' + w.Many + '</div>' +
-          '<table class="grid ac-sl"><colgroup><col><col style="width:72px"><col style="width:86px"><col style="width:72px"><col style="width:70px"></colgroup><thead><tr><th>' + w.One + '</th><th class="r">Model</th><th class="r">This account</th><th class="r">Actual</th><th class="r">Drift</th></tr></thead><tbody>' +
-          sleeves.map(function (x) {
-            var g = p.guard && p.guard[x.s.access], bad = g && (x.tgt < g.min - 0.05 || x.tgt > g.max + 0.05), dr = Math.round((x.act - x.tgt) * 10) / 10;
-            return '<tr><td><span class="bb-dot" style="background:' + x.color + '"></span><b>' + esc(x.access) + '</b> <span class="ac-nm">' + esc(x.m ? x.m.name : '') + '</span>' + (x.access !== x.s.access ? '<div class="bb-flag info">Swapped from ' + esc(x.s.access) + ' (approved swap)</div>' : '') +
-              (bad ? '<div class="bb-flag err">Outside range ' + g.min + '&ndash;' + g.max + '%</div>' : '') + '</td><td class="r">' + x.s.alloc.toFixed(1) + '%</td><td class="r' + (Math.abs(x.tgt - x.s.alloc) > 0.05 ? ' b' : '') + '">' + x.tgt.toFixed(1) + '%</td><td class="r">' + x.act.toFixed(1) + '%</td><td class="r ' + (Math.abs(dr) > DRIFT_LIMIT ? 'neg b' : '') + '">' + (dr > 0 ? '+' : '') + dr.toFixed(1) + '</td></tr>';
+          '<table class="grid ac-sl"><colgroup><col><col style="width:66px"><col style="width:78px"><col style="width:62px"><col style="width:58px"></colgroup><thead><tr><th>' + w.One + '</th><th class="r">' + (mw ? 'Start' : 'Model') + '</th><th class="r">This account</th><th class="r">Actual</th><th class="r">Drift</th></tr></thead><tbody>' +
+          rows0.map(function (acc2) {
+            var x = mixBy[acc2] || { tgt: 0, act: 0 }, m = model(acc2), st = start[acc2] || 0, g = p.guard && p.guard[acc2], ad = p.adds && p.adds[acc2];
+            var tag = a.added.indexOf(acc2) > -1 ? '<div class="bb-flag info">Added by advisor' + (ad ? ' (max ' + ad.max + '%)' : '') + '</div>' : a.removed.indexOf(acc2) > -1 ? '<div class="bb-flag info">Removed by advisor</div>' : '';
+            var bad = mw && ((g && x.tgt > 0.05 && (x.tgt < g.min - 0.05 || x.tgt > g.max + 0.05)) || (g && g.min > 0.05 && !(x.tgt > 0.05)) || (!g && ad && x.tgt > ad.max + 0.05) || (!g && !ad && x.tgt > 0.05));
+            var rng = g ? g.min + '&ndash;' + g.max + '%' : ad ? '0&ndash;' + ad.max + '%' : 'not allowed';
+            var dr = Math.round((x.act - x.tgt) * 10) / 10;
+            return '<tr><td><span class="bb-dot" style="background:' + color(p, acc2) + '"></span><b>' + esc(acc2) + '</b> <span class="ac-nm">' + esc(m ? m.name.replace(/^UBS Building Block \d - /, '') : '') + '</span>' + tag +
+              (bad ? '<div class="bb-flag err">Outside range ' + rng + '</div>' : '') + '</td><td class="r">' + (st ? st.toFixed(1) + '%' : '-') + '</td><td class="r' + (Math.abs(x.tgt - st) > 0.05 ? ' b' : '') + '">' + (x.tgt > 0 ? x.tgt.toFixed(1) + '%' : '-') + '</td><td class="r">' + (x.act > 0 ? x.act.toFixed(1) + '%' : '-') + '</td><td class="r ' + (Math.abs(dr) > DRIFT_LIMIT ? 'neg b' : '') + '">' + (x.tgt > 0 ? (dr > 0 ? '+' : '') + dr.toFixed(1) : '') + '</td></tr>';
           }).join('') + '</tbody></table>' +
           (a.restr ? '<div class="ac-note">' + I.info + '<span><b>' + a.restr.type + ': ' + esc(a.restr.ticker) + '.</b> ' + (a.restr.type === 'Do not hold' ? 'Its weight is held in cash in this account.' : 'Reductions in this security are not traded in this account.') + '</span></div>' : '') +
-          (a.custom ? '<div class="ac-note">' + I.info + '<span><b>Customized.</b> The advisor set these ' + w.one + ' weights. Security weights inside each ' + w.one + ' still follow the model.</span></div>' : '') +
+          (a.custom ? '<div class="ac-note">' + I.info + '<span><b>Tailored.</b> The advisor chose these block weights. The securities inside each block still follow the block model, so CIO updates reach this account.</span></div>' : '') +
         '</div><div class="ac-right"><div class="dv-sec-h">Holdings <span>' + rows.length + ' securities &middot; ' + pct(cashW, 2) + ' cash. Colour shows the ' + w.one + ' each weight comes from.</span></div>' +
-          '<div class="grid-scroll ac-hscroll"><table class="grid ac-hold"><colgroup><col style="width:36px"><col style="width:78px"><col><col style="width:82px"><col style="width:38%"></colgroup><thead><tr><th class="r">#</th><th>Ticker</th><th>Description</th><th class="r">Weight</th><th>From</th></tr></thead><tbody>' +
+          '<div class="grid-scroll ac-hscroll"><table class="grid ac-hold"><colgroup><col style="width:36px"><col style="width:78px"><col><col style="width:82px"><col style="width:36%"></colgroup><thead><tr><th class="r">#</th><th>Ticker</th><th>Description</th><th class="r">Weight</th><th>From</th></tr></thead><tbody>' +
           rows.map(function (x, i) {
             var held = a.restr && a.restr.ticker === x.t;
             return '<tr><td class="r bb-rk">' + (i + 1) + '</td><td class="b">' + esc(x.t) + (held ? '<span class="ca-ic" data-tip="' + esc(a.restr.type) + '" data-tip-anchor>' + I.info + '</span>' : '') + '</td><td data-tip="' + esc((SEC[x.t] || {}).desc || '') + '" data-tip-trunc>' + esc((SEC[x.t] || {}).desc || '') + '</td><td class="r b">' + pct(x.w) + '</td><td><div class="bb-sz"><div class="bb-sz-b" style="width:' + Math.max(1.5, x.w / max * 100) + '%">' +
-              contrib[x.t].map(function (q) { return '<i style="flex:' + q.c + ' 1 0;background:' + q.color + '" data-tip="' + esc(q.access) + ' ' + pct(q.c) + '" data-tip-anchor></i>'; }).join('') + '</div></div></td></tr>';
+              contrib[x.t].map(function (q) { return '<i style="flex:' + q.c + ' 1 0;background:' + color(p, q.access) + '" data-tip="' + esc(q.access) + ' ' + pct(q.c) + '" data-tip-anchor></i>'; }).join('') + '</div></div></td></tr>';
           }).join('') + '</tbody></table></div></div></div>';
     }
 
-    /* ================= GUARDRAILS (MyWay) ================= */
-    var GD = null; // { p, rows: [{access, min, max, swaps}] } unsaved edits
-    function gdRows(p) { return p.sleeves.map(function (s) { var g = (p.guard && p.guard[s.access]) || SEED.defaultBand(s.alloc); return { access: s.access, min: g.min, max: g.max, swaps: ((p.swaps && p.swaps[s.access]) || []).slice() }; }); }
-    function gdDirty(p) { return !!GD && GD.p === p.access && JSON.stringify(GD.rows) !== JSON.stringify(gdRows(p)); }
-    function gdProblem(p, rows) {
-      var sumMin = 0, sumMax = 0;
-      for (var i = 0; i < rows.length; i++) {
-        var r = rows[i], t = p.sleeves[i].alloc;
-        if (r.min === '' || r.max === '' || isNaN(+r.min) || isNaN(+r.max)) return r.access + ': enter a number for Min and Max';
-        if (+r.min < 0 || +r.max > 100) return r.access + ': Min and Max must be between 0 and 100';
-        if (+r.min > t + EPS) return r.access + ': Min (' + r.min + '%) is above the target (' + t + '%)';
-        if (+r.max < t - EPS) return r.access + ': Max (' + r.max + '%) is below the target (' + t + '%)';
+    /* ================= GUARDRAILS (MyWay): block ranges, blocks that may be added, health checks ================= */
+    var GD = null; // unsaved edits: { p, rows: [{access,min,max}], adds: [{access,max}], health: {...} }
+    var H_KEYS = ['eqMin', 'eqMax', 'cashMin', 'cashMax', 'maxBlock', 'minBlocks'];
+    function gdFrom(p) {
+      return { p: p.access,
+        rows: p.sleeves.map(function (s) { var g = (p.guard && p.guard[s.access]) || SEED.defaultBand(s.alloc); return { access: s.access, min: g.min, max: g.max }; }),
+        adds: Object.keys(p.adds || {}).sort().map(function (a) { return { access: a, max: p.adds[a].max }; }),
+        health: Object.assign({}, p.health || {}) };
+    }
+    function gdRules(G) {
+      var r = { guard: {}, adds: {}, health: {} };
+      G.rows.forEach(function (x) { r.guard[x.access] = { min: +x.min, max: +x.max }; });
+      G.adds.forEach(function (x) { r.adds[x.access] = { max: +x.max }; });
+      H_KEYS.forEach(function (k) { r.health[k] = +G.health[k]; });
+      return r;
+    }
+    function gdDirty(p) { return !!GD && GD.p === p.access && JSON.stringify(gdRules(GD)) !== JSON.stringify(gdRules(gdFrom(p))); }
+    function badNum(v, lo, hi) { return v === '' || isNaN(+v) || +v < lo || +v > hi; }
+    function gdProblem(p, G) {
+      var sumMin = 0, sumMax = 0, i, r;
+      for (i = 0; i < G.rows.length; i++) {
+        r = G.rows[i]; var t = p.sleeves[i].alloc;
+        if (badNum(r.min, 0, 100) || badNum(r.max, 0, 100)) return r.access + ': Min and Max must be numbers from 0 to 100';
+        if (+r.min > t + EPS) return r.access + ': Min (' + r.min + '%) is above the starting weight (' + t + '%)';
+        if (+r.max < t - EPS) return r.access + ': Max (' + r.max + '%) is below the starting weight (' + t + '%)';
         sumMin += +r.min; sumMax += +r.max;
       }
       if (sumMin > 100 + EPS) return 'The minimums add up to ' + r3(sumMin) + '%. They cannot exceed 100%.';
-      if (sumMax < 100 - EPS) return 'The maximums add up to ' + r3(sumMax) + '%. They must reach at least 100%.';
+      for (i = 0; i < G.adds.length; i++) if (badNum(G.adds[i].max, 1, 100)) return G.adds[i].access + ': Max must be a number from 1 to 100';
+      for (i = 0; i < H_KEYS.length; i++) if (badNum(G.health[H_KEYS[i]], 0, 100)) return 'Health checks: enter numbers from 0 to 100';
+      var h = G.health;
+      if (+h.eqMin > +h.eqMax) return 'Risk: the equity minimum is above the maximum';
+      if (+h.cashMin > +h.cashMax) return 'Structure: the cash minimum is above the maximum';
+      var own = checkMix(gdRules(G), p.sleeves.map(function (s) { return { access: s.access, tgt: s.alloc }; })).fail;
+      if (own.length) return 'The starting allocation itself would fail ' + own[0].k + ': ' + own[0].text + '. The rules must allow the starting allocation.';
       return '';
     }
-    function feedOf(p, rows) {
-      var latest = deliveriesOf(p)[0];
+    function gdImpact(p, G) {
+      var rules = gdRules(G), accts = accountsOf(p), out = 0, by = {};
+      accts.forEach(function (a) { var f = checkMix(rules, a.mix).fail; if (f.length) { out++; f.forEach(function (c) { by[c.k] = (by[c.k] || 0) + 1; }); } });
+      return { out: out, by: by, now: accts.filter(function (a) { return a.out; }).length };
+    }
+    function feedOf(p, G) {
+      var latest = deliveriesOf(p)[0], rules = gdRules(G), h = rules.health;
       return {
-        portfolio: p.access, name: p.name, family: 'MyWay', clientProfile: p.profile ? { region: p.profile[0], tax: p.profile[1], objective: p.profile[2] } : null,
+        portfolio: p.access, name: p.name, family: 'MyWay', riskProfile: p.profile ? p.profile[0] : null,
         modelVersion: latest ? latest.id : null, asOf: p.modified, status: p.status,
-        blocks: p.sleeves.map(function (s, i) { var r = rows[i], m = model(s.access); return { access: s.access, name: m ? m.name : '', target: s.alloc, min: +r.min, max: +r.max, approvedSwaps: r.swaps.slice(), taxManaged: !!(m && m.taxManaged) }; }),
-        rules: { advisorMayResize: true, advisorMayChangeSecurities: false, rebalanceDriftPoints: DRIFT_LIMIT }
+        startingAllocation: p.sleeves.map(function (s) { var m = model(s.access); return { block: s.access, name: m ? m.name : '', assetClass: classOf(s.access), weight: s.alloc, min: rules.guard[s.access].min, max: rules.guard[s.access].max }; }),
+        mayAdd: G.adds.map(function (x) { var m = model(x.access); return { block: x.access, name: m ? m.name : '', assetClass: classOf(x.access), max: +x.max }; }),
+        healthChecks: { risk: { equityMin: h.eqMin, equityMax: h.eqMax }, structure: { cashMin: h.cashMin, cashMax: h.cashMax }, diversification: { maxSingleBlock: h.maxBlock, minBlocks: h.minBlocks }, sustainability: 'not evaluated: needs ESG data' },
+        rules: { advisorMayReweight: true, advisorMayRemoveBlocksWithMinZero: true, advisorMayAddListedBlocks: true, advisorMayChangeSecuritiesInsideBlock: false, rebalanceDriftPoints: DRIFT_LIMIT }
       };
     }
     function renderGuardrails(p, c) {
-      if (!GD || GD.p !== p.access) GD = { p: p.access, rows: gdRows(p) };
-      if (GD.rows.length !== p.sleeves.length || GD.rows.some(function (r, i) { return r.access !== p.sleeves[i].access; })) GD = { p: p.access, rows: gdRows(p) };
-      var accts = accountsOf(p), cust = accts.filter(function (a) { return a.custom; });
-      var elig = C.S.models.filter(function (m) { return B().isBlock(m) && m.status !== 'New' && !p.sleeves.some(function (s) { return s.access === m.access; }); });
+      if (!GD || GD.p !== p.access || GD.rows.length !== p.sleeves.length || GD.rows.some(function (r, i) { return r.access !== p.sleeves[i].access; })) GD = gdFrom(p);
+      var accts = accountsOf(p), cust = accts.filter(function (a) { return a.custom; }).length;
       c.innerHTML =
         '<div class="gd-wrap"><div class="gd-main">' +
-          '<div class="gd-intro">Advisors may resize each block inside its range and use an approved swap. They cannot change the securities inside a block. ' + num(cust.length, 0) + ' of ' + num(accts.length, 0) + ' accounts are customized today.</div>' +
-          '<table class="grid gd-grid" id="gd-table"></table>' +
-          '<datalist id="gd-list">' + elig.map(function (m) { return '<option value="' + esc(m.access) + '">' + esc(m.access + ' · ' + m.name) + '</option>'; }).join('') + '</datalist>' +
+          '<div class="gd-intro">The questionnaire picks this starting allocation. Advisors may then re-weight blocks inside their ranges, remove a block whose minimum is 0, and add a listed block up to its maximum. Every tailored portfolio must pass the health checks. Securities inside a block cannot be changed. ' + num(cust, 0) + ' of ' + num(accts.length, 0) + ' accounts are tailored today.</div>' +
+          '<div class="dv-sec-h">Blocks in the starting allocation</div><table class="grid gd-grid" id="gd-table"></table>' +
+          '<div class="dv-sec-h gd-h2">Blocks advisors may add</div><table class="grid gd-grid" id="gd-adds"></table>' +
+          '<div class="dv-sec-h gd-h2">Portfolio health checks <span>Applied to every tailored account.</span></div><div class="gd-hc" id="gd-hc"></div>' +
           '<div class="md-buttons"><span class="gd-msg" id="gd-msg"></span><button class="btn btn-text" data-u="gd-reset">Reset</button><button class="btn btn-tan" id="gd-save" data-u="gd-save">Save Guardrails</button></div>' +
         '</div><aside class="gd-feed" id="gd-feed"></aside></div>';
       drawGuard(p);
     }
+    function blockOpts(p) {
+      return C.S.models.filter(function (m) { return B().isBlock(m) && m.status !== 'New' && !p.sleeves.some(function (s) { return s.access === m.access; }) && !GD.adds.some(function (x) { return x.access === m.access; }); })
+        .map(function (m) { return '<option value="' + esc(m.access) + '">' + esc(m.access + ' · ' + m.name) + '</option>'; }).join('');
+    }
     function drawGuard(p) {
-      var rows = GD.rows, accts = accountsOf(p);
-      $('#gd-table').innerHTML = '<colgroup><col style="width:72px"><col><col style="width:84px"><col style="width:78px"><col style="width:78px"><col style="width:230px"><col style="width:112px"><col style="width:250px"></colgroup>' +
-        '<thead><tr><th>Access</th><th>Building Block</th><th class="r">Target</th><th class="r">Min %</th><th class="r">Max %</th><th>Range<span class="ii" data-tip="Grey band = allowed range. Black tick = target. Dots = customized accounts." data-tip-anchor>' + I.info + '</span></th><th class="r">Accounts outside</th><th>Approved swaps</th></tr></thead><tbody>' +
-        rows.map(function (r, i) {
-          var s = p.sleeves[i], m = model(s.access), mn = +r.min || 0, mx = +r.max || 0, scale = Math.min(100, Math.max(mx, s.alloc) + 12);
-          var outside = 0, dots = '';
-          accts.forEach(function (a, k) { if (!a.custom) return; var v = a.tgt[i]; if (v < mn - 0.05 || v > mx + 0.05) outside++; if (k % 3 === 0) dots += '<i style="left:' + Math.min(100, v / scale * 100) + '%" class="' + (v < mn - 0.05 || v > mx + 0.05 ? 'o' : '') + '"></i>'; });
-          var bad = isNaN(+r.min) || isNaN(+r.max) || r.min === '' || r.max === '' || mn > s.alloc + EPS || mx < s.alloc - EPS;
-          return '<tr data-i="' + i + '"><td class="b"><span class="bb-dot" style="background:' + B().colorOf(p, s.access) + '"></span>' + esc(s.access) + '</td><td class="gd-nm">' + esc(m ? m.name : '') + (m && m.taxManaged ? '<div><span class="ac-f t" data-tip="This block is managed tax-aware" data-tip-anchor>Tax-managed</span></div>' : '') + '</td>' +
-            '<td class="r b">' + pct(s.alloc) + '</td>' +
+      var accts = accountsOf(p), G = GD, h = G.health;
+      $('#gd-table').innerHTML = '<colgroup><col style="width:72px"><col><col style="width:104px"><col style="width:84px"><col style="width:76px"><col style="width:76px"><col style="width:220px"><col style="width:96px"></colgroup>' +
+        '<thead><tr><th>Access</th><th>Building Block</th><th>Asset class</th><th class="r">Start</th><th class="r">Min %</th><th class="r">Max %</th><th>Range<span class="ii" data-tip="Band = allowed range. Black tick = starting weight. Dots = tailored accounts (orange = outside)." data-tip-anchor>' + I.info + '</span></th><th class="r">Outside</th></tr></thead><tbody>' +
+        G.rows.map(function (r, i) {
+          var s = p.sleeves[i], m = model(s.access), mn = +r.min || 0, mx = +r.max || 0, scale = 100, outside = 0, dots = '';
+          accts.forEach(function (a, k) { if (!a.custom) return; var x = a.mix.filter(function (y) { return y.access === s.access; })[0], v = x ? x.tgt : 0, o = v < mn - 0.05 || v > mx + 0.05; if (o) outside++; if (k % 3 === 0) dots += '<i style="left:' + Math.min(100, v / scale * 100) + '%" class="' + (o ? 'o' : '') + '"></i>'; });
+          var bad = badNum(r.min, 0, 100) || badNum(r.max, 0, 100) || mn > s.alloc + EPS || mx < s.alloc - EPS;
+          return '<tr data-i="' + i + '"><td class="b"><span class="bb-dot" style="background:' + color(p, s.access) + '"></span>' + esc(s.access) + '</td><td class="gd-nm">' + esc(m ? m.name.replace(/^UBS /, '') : '') + (mn === 0 ? '<div><span class="ac-f" data-tip="Minimum 0: advisors may remove this block" data-tip-anchor>Removable</span></div>' : '') + '</td><td>' + classOf(s.access) + '</td>' +
+            '<td class="r b">' + num(s.alloc, 1) + '%</td>' +
             '<td class="r"><input class="nw gd-in' + (bad ? ' bad' : '') + '" data-g="min" value="' + esc(r.min) + '" inputmode="decimal" autocomplete="off"></td>' +
             '<td class="r"><input class="nw gd-in' + (bad ? ' bad' : '') + '" data-g="max" value="' + esc(r.max) + '" inputmode="decimal" autocomplete="off"></td>' +
             '<td><div class="gd-rng"><span class="band" style="left:' + (mn / scale * 100) + '%;width:' + (Math.max(0, mx - mn) / scale * 100) + '%"></span>' + dots + '<span class="tick" style="left:' + (s.alloc / scale * 100) + '%"></span></div></td>' +
-            '<td class="r' + (outside ? ' neg b' : '') + '">' + outside + '</td>' +
-            '<td><div class="gd-sw">' + r.swaps.map(function (x) { return '<span class="gd-chip" data-tip="' + esc((model(x) || {}).name || '') + '" data-tip-anchor>' + esc(x) + '<button data-u="gd-unswap" data-v="' + esc(x) + '" aria-label="Remove swap">&times;</button></span>'; }).join('') +
-            '<input class="gd-add" list="gd-list" placeholder="Add block" data-swap autocomplete="off"></div></td></tr>';
+            '<td class="r' + (outside ? ' neg b' : '') + '">' + outside + '</td></tr>';
         }).join('') + '</tbody>';
+      $('#gd-adds').innerHTML = '<colgroup><col style="width:72px"><col><col style="width:104px"><col style="width:84px"><col style="width:76px"><col style="width:220px"><col style="width:96px"><col style="width:76px"></colgroup>' +
+        '<thead><tr><th>Access</th><th>Building Block</th><th>Asset class</th><th class="r"></th><th class="r">Max %</th><th></th><th class="r">Accounts using</th><th></th></tr></thead><tbody>' +
+        G.adds.map(function (x, i) {
+          var m = model(x.access), using = accts.filter(function (a) { return a.mix.some(function (y) { return y.access === x.access && y.tgt > 0.05; }); }).length;
+          return '<tr data-a="' + i + '"><td class="b"><span class="bb-dot" style="background:' + color(p, x.access) + '"></span>' + esc(x.access) + '</td><td class="gd-nm">' + esc(m ? m.name.replace(/^UBS /, '') : '') + '</td><td>' + classOf(x.access) + '</td><td></td>' +
+            '<td class="r"><input class="nw gd-ad' + (badNum(x.max, 1, 100) ? ' bad' : '') + '" value="' + esc(x.max) + '" inputmode="decimal" autocomplete="off"></td><td></td><td class="r">' + using + '</td><td class="c"><button class="del" data-u="gd-unadd" data-v="' + esc(x.access) + '">Remove</button></td></tr>';
+        }).join('') +
+        '<tr class="gd-addrow"><td colspan="8"><input class="gd-add" list="gd-list" placeholder="Add a block advisors may use (Access code)" data-addblock autocomplete="off"><datalist id="gd-list">' + blockOpts(p) + '</datalist></td></tr></tbody>';
+      var start = checkMix(gdRules(G), p.sleeves.map(function (s) { return { access: s.access, tgt: s.alloc }; }));
+      var inp = function (k) { return '<input class="nw gd-h' + (badNum(h[k], 0, 100) ? ' bad' : '') + '" data-h="' + k + '" value="' + esc(h[k]) + '" inputmode="decimal" autocomplete="off">'; };
+      var row = function (k, rule, now) { return '<div class="gd-hc-r"><b>' + k + '</b><span class="gd-hc-rule">' + rule + '</span><span class="gd-hc-now">' + now + '</span><span class="gd-hc-n" data-hc="' + k + '"></span></div>'; };
+      $('#gd-hc').innerHTML =
+        row('Risk', 'Equity between ' + inp('eqMin') + ' and ' + inp('eqMax') + '%', 'Starting: ' + num(start.eq, 1) + '%') +
+        row('Structure', 'Cash between ' + inp('cashMin') + ' and ' + inp('cashMax') + '%', 'Starting: ' + num(start.cash, 1) + '%') +
+        row('Diversification', 'Largest block at most ' + inp('maxBlock') + '%, at least ' + inp('minBlocks') + ' blocks', 'Starting: ' + num(Math.max.apply(null, p.sleeves.map(function (s) { return s.alloc; })), 1) + '%, ' + p.sleeves.length + ' blocks') +
+        '<div class="gd-hc-r na"><b>Sustainability</b><span class="gd-hc-rule">Needs ESG data for each block. MDP does not hold it today.</span><span class="gd-hc-now"></span><span class="gd-hc-n"></span></div>';
       gdState(p);
     }
     function gdState(p) {
-      var why = gdProblem(p, GD.rows), dirty = gdDirty(p), out = 0, accts = accountsOf(p);
-      if (!why) accts.forEach(function (a) { if (a.custom && GD.rows.some(function (r, i) { return a.tgt[i] < +r.min - 0.05 || a.tgt[i] > +r.max + 0.05; })) out++; });
+      var why = gdProblem(p, GD), dirty = gdDirty(p), imp = why ? null : gdImpact(p, GD);
       C.setBtn($('#gd-save'), why || (!dirty ? 'No changes to save' : ''));
+      Array.prototype.forEach.call(document.querySelectorAll('[data-hc]'), function (el) { var n = imp ? imp.by[el.getAttribute('data-hc')] || 0 : null; el.innerHTML = n == null ? '' : n ? '<b class="neg">' + num(n, 0) + '</b> accounts fail' : '<span class="muted">All accounts pass</span>'; });
       var msg = $('#gd-msg');
-      if (msg) msg.innerHTML = why ? '<span class="neg">' + esc(why) + '</span>' : dirty ? (out ? I.attn + '<span>' + plural(out, 'customized account') + ' would be outside the new ranges and flagged for advisor review.</span>' : '<span>Unsaved changes. No customized account falls outside the new ranges.</span>') : '';
-      var f = feedOf(p, GD.rows), el = $('#gd-feed');
+      if (msg) msg.innerHTML = why ? '<span class="neg">' + esc(why) + '</span>' : dirty ? (imp.out > imp.now ? I.attn + '<span>' + plural(imp.out, 'tailored account') + ' would be outside guardrails (now ' + imp.now + '). They would be flagged for advisor review.</span>' : '<span>Unsaved changes. ' + plural(imp.out, 'account') + ' outside guardrails under these rules (now ' + imp.now + ').</span>') : '';
+      var f = feedOf(p, GD), el = $('#gd-feed');
       if (el) el.innerHTML = '<div class="gd-feed-h"><span class="k">Published feed</span><b>' + esc(p.access) + '</b><button class="tool-link" data-u="gd-dl">Download JSON</button></div>' +
-        '<div class="gd-feed-s">One record per portfolio. Read by the proposal tool, enrollment and rebalancing, so all three use the same targets and limits.' + (dirty ? ' <em>Preview of unsaved changes.</em>' : '') + '</div>' +
-        '<dl class="gd-dl"><dt>Client profile</dt><dd>' + (f.clientProfile ? esc(f.clientProfile.region + ' · ' + f.clientProfile.tax + ' · ' + f.clientProfile.objective) : '-') + '</dd>' +
-        '<dt>Model version</dt><dd>' + esc(f.modelVersion || '-') + '</dd><dt>Status</dt><dd>' + esc(f.status) + '</dd>' +
-        '<dt>Advisor may</dt><dd>Resize blocks within range; use approved swaps</dd><dt>Advisor may not</dt><dd>Change securities inside a block; add other strategies</dd><dt>Rebalance when</dt><dd>A block is ' + DRIFT_LIMIT + '+ points off target</dd></dl>' +
-        '<table class="chg-tbl gd-ft"><thead><tr><th>Block</th><th class="r">Target</th><th class="r">Min</th><th class="r">Max</th><th>Swaps</th></tr></thead><tbody>' +
-        f.blocks.map(function (b) { return '<tr><td>' + esc(b.access) + '</td><td class="r">' + b.target + '</td><td class="r">' + (isNaN(b.min) ? '-' : b.min) + '</td><td class="r">' + (isNaN(b.max) ? '-' : b.max) + '</td><td>' + (b.approvedSwaps.join(', ') || '-') + '</td></tr>'; }).join('') + '</tbody></table>';
+        '<div class="gd-feed-s">One record per starting allocation. The questionnaire, the advisor tailoring screen, enrollment and rebalancing all read it, so they use the same weights and limits.' + (dirty ? ' <em>Preview of unsaved changes.</em>' : '') + '</div>' +
+        '<dl class="gd-dl"><dt>Risk profile</dt><dd>' + esc(f.riskProfile || '-') + '</dd><dt>Model version</dt><dd>' + esc(f.modelVersion || '-') + '</dd><dt>Status</dt><dd>' + esc(f.status) + '</dd>' +
+        '<dt>Advisor may</dt><dd>Re-weight within range; remove blocks with min 0; add listed blocks</dd><dt>Advisor may not</dt><dd>Change securities inside a block; use other strategies</dd><dt>Rebalance when</dt><dd>A block is ' + DRIFT_LIMIT + '+ points off target</dd></dl>' +
+        '<table class="chg-tbl gd-ft"><thead><tr><th>Block</th><th class="r">Start</th><th class="r">Min</th><th class="r">Max</th></tr></thead><tbody>' +
+        f.startingAllocation.map(function (b) { return '<tr><td>' + esc(b.block) + '</td><td class="r">' + b.weight + '</td><td class="r">' + (isNaN(b.min) ? '-' : b.min) + '</td><td class="r">' + (isNaN(b.max) ? '-' : b.max) + '</td></tr>'; }).join('') +
+        f.mayAdd.map(function (b) { return '<tr class="muted"><td>' + esc(b.block) + ' (add)</td><td class="r">0</td><td class="r">0</td><td class="r">' + (isNaN(b.max) ? '-' : b.max) + '</td></tr>'; }).join('') + '</tbody></table>' +
+        '<div class="gd-feed-c">Checks: equity ' + f.healthChecks.risk.equityMin + '&ndash;' + f.healthChecks.risk.equityMax + '% &middot; cash ' + f.healthChecks.structure.cashMin + '&ndash;' + f.healthChecks.structure.cashMax + '% &middot; largest block &le; ' + f.healthChecks.diversification.maxSingleBlock + '% &middot; at least ' + f.healthChecks.diversification.minBlocks + ' blocks</div>';
     }
     function saveGuard(p) {
       var b = $('#gd-save'); if (b && b.classList.contains('is-disabled')) return;
-      var before = gdRows(p), notes = [];
-      p.guard = {}; p.swaps = {};
-      GD.rows.forEach(function (r, i) {
-        p.guard[r.access] = { min: +r.min, max: +r.max };
-        if (r.swaps.length) p.swaps[r.access] = r.swaps.slice();
-        var o = before[i];
-        if (o.min !== +r.min || o.max !== +r.max) notes.push(r.access + ' range ' + o.min + '-' + o.max + '% to ' + (+r.min) + '-' + (+r.max) + '%');
-        if (o.swaps.join() !== r.swaps.join()) notes.push(r.access + ' swaps: ' + (r.swaps.join(', ') || 'none'));
-      });
+      var before = gdRules(gdFrom(p)), after = gdRules(GD), notes = [];
+      Object.keys(after.guard).forEach(function (a) { var o = before.guard[a], n = after.guard[a]; if (o && (o.min !== n.min || o.max !== n.max)) notes.push(a + ' range ' + o.min + '-' + o.max + '% to ' + n.min + '-' + n.max + '%'); });
+      Object.keys(after.adds).forEach(function (a) { var o = before.adds[a]; if (!o) notes.push(a + ' may be added (max ' + after.adds[a].max + '%)'); else if (o.max !== after.adds[a].max) notes.push(a + ' add max ' + o.max + '% to ' + after.adds[a].max + '%'); });
+      Object.keys(before.adds).forEach(function (a) { if (!after.adds[a]) notes.push(a + ' may no longer be added'); });
+      H_KEYS.forEach(function (k) { if (before.health[k] !== after.health[k]) notes.push({ eqMin: 'equity min', eqMax: 'equity max', cashMin: 'cash min', cashMax: 'cash max', maxBlock: 'largest block max', minBlocks: 'minimum blocks' }[k] + ' ' + before.health[k] + ' to ' + after.health[k]); });
+      p.guard = after.guard; p.adds = after.adds; p.health = after.health;
       p.rev = (p.rev || 0) + 1;
       C.logEvent(p, { ts: C.nowStamp(), event: 'Guardrails Updated', user: C.persona.user, details: notes.join('; ') });
       C.save();
-      GD = { p: p.access, rows: gdRows(p) };
+      GD = gdFrom(p);
       drawGuard(p);
       var out = accountsOf(p).filter(function (a) { return a.out; }).length;
-      C.toast('Guardrails saved and published.' + (out ? ' ' + plural(out, 'account') + ' now outside range: see the Accounts tab.' : ''), 'ok');
+      C.toast('Guardrails saved and published.' + (out ? ' ' + plural(out, 'account') + ' outside guardrails: see the Accounts tab.' : ''), 'ok');
     }
     function download(name, text, type) {
       var a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type: type || 'application/json' })); a.download = name;
@@ -632,40 +743,43 @@
         case 'ac-pg': AV.page += +v; c._draw(); break;
         case 'ac-open': AV.open = +el.getAttribute('data-i'); renderAccounts(m, c); window.scrollTo(0, 0); break;
         case 'ac-back': AV.open = null; renderAccounts(m, c); break;
-        case 'gd-reset': GD = { p: m.access, rows: gdRows(m) }; drawGuard(m); break;
+        case 'gd-reset': GD = gdFrom(m); drawGuard(m); break;
         case 'gd-save': saveGuard(m); break;
-        case 'gd-unswap': { var i = +el.closest('tr').getAttribute('data-i'); GD.rows[i].swaps = GD.rows[i].swaps.filter(function (x) { return x !== v; }); drawGuard(m); break; }
-        case 'gd-dl': download(m.access + '_proposal_feed.json', JSON.stringify(feedOf(m, GD.rows), null, 2)); break;
+        case 'gd-unadd': GD.adds = GD.adds.filter(function (x) { return x.access !== v; }); drawGuard(m); break;
+        case 'gd-dl': download(m.access + '_myway_feed.json', JSON.stringify(feedOf(m, GD), null, 2)); break;
         case 'fee-dl': exportFees(m); break;
       }
     });
-    function addSwap(inp) {
-      var m = C.currentModel(), i = +inp.closest('tr').getAttribute('data-i'), tok = inp.value.trim().split(/\s/)[0].toUpperCase(), r = GD.rows[i], x = model(tok);
+    function addBlock(inp) {
+      var m = C.currentModel(), tok = inp.value.trim().split(/\s/)[0].toUpperCase(), x = model(tok);
       if (!tok) return;
-      var why = !x ? 'Model not found: ' + tok : !B().isBlock(x) ? 'Swaps must be UBS Building Blocks' : x.status === 'New' ? tok + ' has no approved model yet' :
-        m.sleeves.some(function (s) { return s.access === tok; }) ? tok + ' is already in this portfolio' : r.swaps.indexOf(tok) > -1 ? tok + ' is already an approved swap' : '';
+      var why = !x ? 'Model not found: ' + tok : !B().isBlock(x) ? 'Only UBS Building Blocks can be added to a MyWay portfolio' : x.status === 'New' ? tok + ' has no approved model yet' :
+        m.sleeves.some(function (s) { return s.access === tok; }) ? tok + ' is already in the starting allocation' : GD.adds.some(function (y) { return y.access === tok; }) ? tok + ' is already listed' : '';
       if (why) { C.toast(why); inp.value = ''; return; }
-      r.swaps.push(tok); drawGuard(m);
+      GD.adds.push({ access: tok, max: 10 }); drawGuard(m);
     }
+    function setNum(obj, k, val) { val = val.trim(); obj[k] = val === '' || isNaN(+val) ? val : +val; }
     document.addEventListener('input', function (e) {
-      var t = e.target;
-      if (t.classList.contains('gd-in')) {
-        var m = C.currentModel(), i = +t.closest('tr').getAttribute('data-i'), val = t.value.trim();
-        GD.rows[i][t.getAttribute('data-g')] = val === '' || isNaN(+val) ? val : +val;
-        gdState(m);
-      }
+      var t = e.target, m = C.currentModel();
+      if (!GD || !m || GD.p !== m.access) return;
+      if (t.classList.contains('gd-in')) setNum(GD.rows[+t.closest('tr').getAttribute('data-i')], t.getAttribute('data-g'), t.value);
+      else if (t.classList.contains('gd-ad')) setNum(GD.adds[+t.closest('tr').getAttribute('data-a')], 'max', t.value);
+      else if (t.classList.contains('gd-h')) setNum(GD.health, t.getAttribute('data-h'), t.value);
+      else return;
+      gdState(m);
     });
     document.addEventListener('change', function (e) {
       var t = e.target;
-      if (t.classList.contains('gd-in')) drawGuard(C.currentModel());
-      else if (t.hasAttribute && t.hasAttribute('data-swap')) addSwap(t);
+      if (t.classList.contains('gd-in') || t.classList.contains('gd-ad') || t.classList.contains('gd-h')) drawGuard(C.currentModel());
+      else if (t.hasAttribute && t.hasAttribute('data-addblock')) addBlock(t);
     });
-    document.addEventListener('keydown', function (e) { if (e.key === 'Enter' && e.target.hasAttribute && e.target.hasAttribute('data-swap')) { e.preventDefault(); addSwap(e.target); } });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Enter' && e.target.hasAttribute && e.target.hasAttribute('data-addblock')) { e.preventDefault(); addBlock(e.target); } });
 
     return {
       tabs: { delivery: renderDelivery, guardrails: renderGuardrails, accounts: renderAccounts, fees: renderFees },
       renderDashboard: renderDashboard, paintImpact: paintImpact, portfolioChanges: portfolioChanges, conflicts: conflicts, conflictText: conflictText,
       deliveriesOf: deliveriesOf, stateOf: stateOf, accountsOf: accountsOf, stopLive: stopLive, nowWall: nowWall, when: when,
+      checkMix: checkMix, rulesOf: rulesOf, checkHtml: checkHtml,
       openAccount: function (access, i) { AV = { p: access, f: 'all', q: '', page: 1, open: i }; }, selectDelivery: function (acc, id) { selD[acc] = id; }
     };
   };

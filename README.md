@@ -51,8 +51,8 @@ A right-side drawer replaces "pick a file". Open it with **Import** on Model Det
 
 Three kinds of UBS CIO models:
 
-- **UBS Building Blocks** (B301–B308, *UBS CIO Building Blocks*): ordinary models, each like a single SMA (US Large Cap Growth, Value, Tax-Aware Core, Dividend Income, International ADR, Emerging Markets ADR, Core Fixed Income, Municipal Income). Edited on Model Details.
-- **MyWay Portfolios** (W201–W206, *UBS CIO MyWay Portfolios*): a fixed menu of portfolios made only of UBS Building Blocks, each labelled with the client profile it serves (region, tax treatment, objective).
+- **UBS Building Blocks** (B301–B308, *UBS CIO Building Blocks*): ordinary models holding ETFs, modelled on the CIO "Portfolio Building Blocks" design: 1 Cash, 2 Fixed Income (Short Duration), 3 Fixed Income (Intermediate), 4 Fixed Income (Long Duration), 5 High Yield & EM Debt, 6 US Equity, 7 International Equity (Developed + EM), 8 International Developed Equity. Edited on Model Details.
+- **MyWay starting allocations** (W201 Conservative, W202 Moderate, W203 Aggressive SAA): made only of UBS Building Blocks. The client questionnaire picks one; advisors then tailor it at the block level (re-weight within range, remove a block whose minimum is 0, add a listed block up to its maximum). Each shows its cash / fixed income / equity structure.
 - **Multi-Manager Portfolios** (M101–M105, *UBS CIO Multi-Manager Portfolios*): portfolios made only of third-party SMA models. Managers never see them.
 
 Portfolios share the same screens:
@@ -70,8 +70,9 @@ MDP today ends at *Model Approved*. These views (`js/uma.js`) show the rest of t
 - **Impact before approval**: a strip under the Model Details grid and the Composition grid shows securities changing, turnover, accounts, portfolios recalculated, when trading starts, and cross-sleeve conflicts.
 - **Delivery tab** (every model): each approval is a delivery followed through *Approved in MDP → Sent to Vestmark → Trading → Trades complete → Reconciled*, with accounts traded and exceptions. Approvals after 3:45 PM ET or on weekends queue for the next open.
 - **Delivery dashboard** (`#/delivery`): all deliveries, in flight, open exceptions, and models needing action.
-- **Guardrails** (MyWay): min / max per block, approved swaps, and the published feed for the proposal tool. A target cannot be approved outside its range.
-- **Accounts** (portfolios): every account by sleeve; open one for the full look-through.
+- **Guardrails** (MyWay): range per block, blocks advisors may add, and portfolio health checks (Risk = equity %, Structure = cash %, Diversification = largest block and minimum blocks; Sustainability is shown as not evaluated because MDP holds no ESG data). Editing a rule shows how many tailored accounts would fail it. One published feed. A starting allocation cannot be submitted if it breaks a range or fails its own checks.
+- **Accounts** (portfolios): every account by block, about 30% of MyWay accounts tailored; open one to compare it with the starting allocation, see its health checks, and trace every holding to its block.
+- **ETF look-through**: the blocks hold ETFs. Looking inside each ETF needs ETF holdings data, which MDP does not hold.
 - **Cross-sleeve check**: one sleeve reduced a security another added within 30 days.
 - **Fees** (portfolios): billable assets per sleeve, blended fee, per-manager billing feed. Rates are illustrative.
 

@@ -1436,5 +1436,6 @@
     typeTag: function (m) { return typeTag(m); }, diff: diff, submitModel: submitModel, doSubmit: doSubmit
   };
   /* First render waits for the scripts loaded after this one (import, bulk upload, walkthrough). */
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', route); else route();
+  /* Scripts are deferred, so readyState is already 'interactive' here; DOMContentLoaded fires after the last deferred script. */
+  if (document.readyState !== 'complete') document.addEventListener('DOMContentLoaded', route); else route();
 })();

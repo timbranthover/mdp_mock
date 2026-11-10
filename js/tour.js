@@ -33,9 +33,9 @@
     location.hash = '#/model/N611/info/delivery';
   }
   function openSampleAccount() {
-    var p = C.findModel('W204'); if (!p) return;
-    var list = C.U.accountsOf(p), pick = list.filter(function (a) { return a.custom && a.restr; })[0] || list.filter(function (a) { return a.custom; })[0] || list[0];
-    if (pick) C.U.openAccount('W204', pick.i);
+    var p = C.findModel('W202'); if (!p) return;
+    var list = C.U.accountsOf(p), pick = list.filter(function (a) { return a.custom && a.added.length && !a.out; })[0] || list.filter(function (a) { return a.custom; })[0] || list[0];
+    if (pick) C.U.openAccount('W202', pick.i);
   }
 
   var STEPS = [
@@ -47,7 +47,7 @@
       today: 'This is the screen as it works in production. A manager changes weights, the total must be 100%, and Submit publishes the model.',
       here: 'Nothing new yet. Every later step starts from this approval.' },
 
-    { ch: 'After Submit', title: 'See what a change reaches before approving it', go: '#/model/N611/info/details', look: '#impact',
+    { ch: 'After Submit', title: 'See what a change reaches before approving it', go: '#/model/N611/info/details', look: '#impact|#md-table',
       today: 'Submit gives no indication of what the change affects.',
       here: 'As soon as a weight changes, a strip under the grid shows turnover, the accounts on the model, the portfolios that will be recalculated, and any conflict with another sleeve.',
       action: { label: 'Make a sample edit (META +0.5%)', run: sampleEdit, done: function () { return hasDraft('N611'); }, doneLabel: 'Sample edit made. Open "Show detail" in the strip.' } },
@@ -61,27 +61,32 @@
       today: 'There is no view across models of what was delivered, what is still trading, or what failed.',
       here: 'All deliveries, open exceptions, and the models that need action. A change to one underlying model appears once for each portfolio that uses it: filter on "From Underlying Models".' },
 
-    { ch: 'Portfolios', title: 'A UBS building block is an ordinary model', go: '#/model/B303/info/details', look: '#d-why',
+    { ch: 'MyWay', title: 'A UBS building block is an ordinary model', go: '#/model/B306/info/details', look: '#d-why',
       today: 'Models are maintained by third-party managers and UBS AM.',
-      here: 'UBS CIO maintains building blocks on the same screen with the same rules and audit trail. The notice lists the portfolios each block feeds.' },
+      here: 'UBS CIO maintains the eight ETF building blocks on the same screen, with the same rules and audit trail. The notice lists the starting allocations each block feeds.' },
 
-    { ch: 'Portfolios', title: 'A portfolio is an allocation across blocks', go: '#/model/W204/info/details', look: '#bb-table',
+    { ch: 'MyWay', title: 'A starting allocation is a mix of blocks', go: '#/model/W202/info/details', look: '#bb-table',
       today: 'A model made of other models cannot be expressed in MDP.',
-      here: 'The portfolio stores only block weights and each block\'s advisor range. Security weights are calculated. When a block is approved, every portfolio using it is recalculated and delivered.' },
+      here: 'Moderate SAA: block weights and each block\'s advisor range. Security weights are calculated. Submit is blocked if a weight breaks its range or the allocation fails its own health checks. When a block is approved, every SAA using it is recalculated and delivered.' },
 
-    { ch: 'Portfolios', title: 'The combined model, traced to its blocks', go: '#/model/W204/info/holdings', look: '.bb-cards',
+    { ch: 'MyWay', title: 'The combined model, traced to its blocks', go: '#/model/W202/info/holdings', look: '.bb-cards',
       today: 'Not available.',
-      here: 'What accounts will hold and which block each weight comes from. Two checks run on it: single stocks above 5%, and securities one block reduced while another added within 30 days (filter "Cross-Sleeve Conflicts").' },
+      here: 'What a Moderate account holds and which block each weight comes from. The blocks hold ETFs. Looking inside each ETF needs ETF holdings data, which MDP does not hold today.' },
 
-    { ch: 'Portfolios', title: 'Advisor limits, held in one place', go: '#/model/W204/info/guardrails', look: '#gd-feed',
-      today: 'Allowed ranges and substitutions are not held in any system.',
-      here: 'Minimum and maximum per block, and approved swaps. The proposal tool, enrollment and rebalancing would read this one record. Tighten a range to see how many customized accounts fall outside it.' },
+    { ch: 'MyWay', title: 'Tailoring rules, held in one place', go: '#/model/W202/info/guardrails', look: '#gd-table',
+      today: 'Block ranges, blocks an advisor may add, and health-check limits are not held in any system.',
+      here: 'Range per block (min 0 means it can be removed), blocks advisors may add, and the Risk, Structure and Diversification checks. Tighten a rule to see how many tailored accounts would fail it. One published record feeds the questionnaire, the tailoring screen and rebalancing.' },
 
-    { ch: 'Accounts', title: 'One account, every sleeve', go: '#/model/W204/info/accounts', look: '.ac-cols', prep: openSampleAccount,
-      today: 'No system shows an account sleeve by sleeve, so no one sees the whole account.',
-      here: 'Each account\'s block weights against target and range, and every holding traced to the block it comes from. Account data would come from Vestmark.' },
+    { ch: 'Accounts', title: 'One tailored account against its starting allocation', go: '#/model/W202/info/accounts', look: '.ac-cmp', prep: openSampleAccount,
+      today: 'No system shows an account block by block, so no one sees the whole account.',
+      here: 'Starting allocation beside what the advisor chose, the health checks, and every holding traced to its block. Account data would come from Vestmark.' },
 
-    { ch: 'Accounts', title: 'Each manager\'s billable assets', go: '#/model/M102/info/fees', look: '.fee-grid',
+    { ch: 'Multi-Manager', title: 'Two managers trading against each other', go: '#/model/M105/info/holdings', look: '#bb-chips',
+      today: 'Each manager\'s model is approved on its own. Nobody sees that one sleeve sold what another bought.',
+      here: 'A Multi-Manager Portfolio holds third-party SMAs. The holdings check flags a security one sleeve reduced while another added it within 30 days, a possible wash sale in the same account.',
+      action: { label: 'Show the conflicts', run: function () { var b = $('[data-blk="hf"][data-v="xs"]'); if (b) b.click(); }, show: function () { return !!$('[data-blk="hf"][data-v="xs"]'); }, done: function () { return !!$('[data-blk="hf"][data-v="xs"].on'); }, doneLabel: 'Filtered. Click a row to see which sleeve sold and which bought.' } },
+
+    { ch: 'Multi-Manager', title: 'Each manager\'s billable assets', go: '#/model/M102/info/fees', look: '.fee-grid',
       today: 'A portfolio that uses several managers has no billing breakdown.',
       here: 'Portfolio assets × allocation gives each manager\'s billable assets and fee, and a feed for billing. Rates shown are illustrative.' },
 
@@ -93,11 +98,8 @@
     { ch: 'Scale', title: 'What an external manager sees', go: '#/', look: '#ml-table',
       today: 'A manager sees only their own models.',
       here: 'Unchanged. Managers get the Delivery tab for their own models. Portfolios, accounts and fees are visible to UBS only.',
-      link: { label: 'Open the Polen manager view in a new tab', href: '?persona=polen#/' } },
-
-    { ch: 'Summary', title: 'Everything new, listed against today', go: '#/improvements',
-      text: 'Each change in this twin is recorded here with production behavior beside it and a link to try it. The list exports to Excel.',
-      note: 'End of walkthrough. Close this panel to keep exploring, or step back to any screen.' }
+      note: 'End of walkthrough. Everything new is listed under Improvements in the banner, with production behavior beside it.',
+      link: { label: 'Open the Polen manager view in a new tab', href: '?persona=polen#/' } }
   ];
 
   /* ---- panel ---- */
@@ -157,8 +159,9 @@
   function locate() {
     var s = STEPS[idx]; target = null;
     if (!s || !s.look) { ring.hidden = true; return; }
-    var el = $(s.look);
-    if (el && (el.offsetWidth || el.offsetHeight)) {
+    var el = null; // 'a|b': outline the first one that is visible
+    s.look.split('|').some(function (q) { var x = $(q); if (x && x.offsetHeight && x.offsetWidth) { el = x; return true; } return false; });
+    if (el) {
       target = el;
       var r = el.getBoundingClientRect(), pw = root.offsetWidth + 40, ph = root.offsetHeight + 40, vw = window.innerWidth, vh = window.innerHeight;
       // keep the panel off the thing it is pointing at: dock on the other side if the target sits on the right, otherwise scroll the target above the panel

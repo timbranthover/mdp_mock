@@ -315,9 +315,9 @@
     /* UBS CIO Building Blocks: holdings exactly as on the CIO "Portfolio Building Blocks" slide (11/10/2026).
        Slide weights for blocks 2-4 round to 100.01%; they are scaled to 100% here. Cash residual is 0. */
     B301: { cash: 0, rows: [['USFR', 100]] },
-    B302: { cash: 0, rows: [['SCHO', 12.58], ['SCHR', 15.73], ['SPTL', 3.15], ['TIPX', 5.55], ['VMBS', 23], ['USIG', 40]] },
-    B303: { cash: 0, rows: [['SCHO', 4.72], ['SCHR', 17.30], ['SPTL', 9.44], ['TIPX', 5.55], ['VMBS', 23], ['USIG', 40]] },
-    B304: { cash: 0, rows: [['SCHO', 3.15], ['SCHR', 12.58], ['SPTL', 15.73], ['TIPX', 5.55], ['VMBS', 23], ['USIG', 40]] },
+    B302: { cash: 0, rows: [['SCHO', 12.58], ['SCHR', 15.73], ['SPTL', 3.15], ['TIPX', 5.55], ['VMBS', 23], ['USIG', 39.99]] },
+    B303: { cash: 0, rows: [['SCHO', 4.72], ['SCHR', 17.30], ['SPTL', 9.44], ['TIPX', 5.55], ['VMBS', 23], ['USIG', 39.99]] },
+    B304: { cash: 0, rows: [['SCHO', 3.15], ['SCHR', 12.58], ['SPTL', 15.73], ['TIPX', 5.55], ['VMBS', 23], ['USIG', 39.99]] },
     B305: { cash: 0, rows: [['SPHY', 50], ['VWOB', 33.33], ['EMLC', 16.67]] },
     B306: { cash: 0, rows: [['VUG', 35], ['VTV', 35], ['SPMD', 20], ['SPSM', 10]] },
     B307: { cash: 0, rows: [['IEFA', 70], ['IEMG', 30]] },
@@ -663,6 +663,8 @@
     var used = rows.reduce(function (a, r) { return a + r.weight; }, 0);
     var allocTot = sleeves.reduce(function (a, s) { return a + (byAccess[s.access] ? (+s.alloc || 0) : 0); }, 0);
     var resid = +(allocTot - used).toFixed(3);
+    var rawCash = acc['USD Cash'] || 0; // real cash from the underlying models; anything else in resid is 3-decimal rounding
+    if (Math.abs(resid - rawCash) < 0.01 && Math.abs(resid - rawCash) > 0 && rows.length && (resid < 0 || rawCash < 0.0005)) { var big0 = rows.reduce(function (x, r) { return r.weight > x.weight ? r : x; }, rows[0]); var d = +(resid - +rawCash.toFixed(3)).toFixed(3); big0.weight = +(big0.weight + d).toFixed(3); resid = +(resid - d).toFixed(3); }
     if (resid < 0 && resid > -0.01 && rows.length) { var big = rows.reduce(function (x, r) { return r.weight > x.weight ? r : x; }, rows[0]); big.weight = +(big.weight + resid).toFixed(3); resid = 0; } // rounding only
     rows.unshift({ ticker: 'USD Cash', weight: resid });
     return { holdings: rows, contrib: contrib };
